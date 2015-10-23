@@ -1,15 +1,8 @@
 #include <stdlib.h>
 #include <stdarg.h>
-#include <string.h>
-#include <stdio.h>
 #include <assert.h>
 
 #include "ool.h"
-
-#define ARRAY_SIZE(a)  (sizeof(a) / sizeof((a)[0]))
-
-#define PTR_TO_UINT(x)  ((unsigned long long)(x))
-#define FIELD_OFS(s, f)  PTR_TO_UINT(&((s *) 0)->f)
 
 inst_t
 inst_of(inst_t inst)
@@ -38,7 +31,7 @@ mem_allocz(unsigned size)
 }
 
 void
-mem_free(void *p)
+mem_free(void *p, unsigned size)
 {
   free(p);
 }
@@ -151,7 +144,7 @@ object_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 object_free(inst_t inst, inst_t cl)
 {
-  mem_free(inst);
+  mem_free(inst, CLASSVAL(inst_of(inst))->inst_size);
 }
 
 void
@@ -234,7 +227,7 @@ str_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 void
 str_free(inst_t inst, inst_t cl)
 {
-  mem_free(STRVAL(inst)->data);
+  mem_free(STRVAL(inst)->data, STRVAL(inst)->size);
   inst_free_parent(inst, cl);
 }
 
@@ -449,7 +442,7 @@ array_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 array_free(inst_t inst, inst_t cl)
 {
-  mem_free(ARRAYVAL(inst)->data);
+  mem_free(ARRAYVAL(inst)->data, ARRAYVAL(inst)->size * sizeof(ARRAYVAL(inst)->data[0]));
 
   inst_free_parent(inst, cl);
 }
@@ -728,6 +721,7 @@ struct {
   { &consts.str_module,      "#Module" },
   { &consts.str_object,      "#Object" },
   { &consts.str_pair,        "#Pair" },
+  { &consts.str_quote,       "&quote" },
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
   { &consts.str_true,        "#true" }

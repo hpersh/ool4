@@ -1,3 +1,19 @@
+#include <string.h>
+#include <stdio.h>
+
+enum {
+  false, true
+};
+
+#define ARRAY_SIZE(a)  (sizeof(a) / sizeof((a)[0]))
+
+#define PTR_TO_UINT(x)  ((unsigned long long)(x))
+#define FIELD_OFS(s, f)  PTR_TO_UINT(&((s *) 0)->f)
+
+void *mem_alloc(unsigned size);
+void *mem_allocz(unsigned size);
+void mem_free(void *p, unsigned size);
+
 struct inst;
 typedef struct inst *inst_t;
 
@@ -90,6 +106,8 @@ struct inst_metaclass {
 #define CLASSVAL(x)  (((struct inst_metaclass *)(x))->val)
 #define CLASSVAL_OFS(x)  (FIELD_OFS(struct inst_metaclass, val-> x))
 
+inst_t inst_of(inst_t inst);
+
 struct {
   inst_t module_main;
   inst_t metaclass;
@@ -135,6 +153,7 @@ struct {
   inst_t str_module;
   inst_t str_object;
   inst_t str_pair;
+  inst_t str_quote;
   inst_t str_string;
   inst_t str_system;
   inst_t str_true;
@@ -308,3 +327,43 @@ void array_new(inst_t *dst, unsigned size);
 void strdict_new(inst_t *dst, unsigned size);
 void dict_new(inst_t *dst, unsigned size);
 void module_new(inst_t *dst, inst_t name, inst_t parent);
+
+struct stream;
+
+struct stream_funcs {
+  int  (*getc)(struct stream *);
+  void (*ungetc)(struct stream *, char);
+};
+
+struct stream {
+  struct stream_funcs *funcs;
+};
+
+struct stream_file {
+  struct stream base[1];
+  
+  FILE *fp;
+};
+
+void stream_file_init(struct stream_file *str, FILE *fp);
+
+struct tokbuf {
+  unsigned bufsize;
+  unsigned len;
+  char     *buf;
+  char     data[32];
+};
+
+struct parse_ctxt {
+  struct stream *str;
+  struct tokbuf tb[1];
+};
+
+void parse_ctxt_init(struct parse_ctxt *pc, struct stream *str);
+void parse_ctxt_fini(struct parse_ctxt *pc);
+
+enum {
+  PARSE_EOF, PARSE_OK, PARSE_ERR
+};
+
+unsigned parse(inst_t *dst, struct parse_ctxt *pc);
