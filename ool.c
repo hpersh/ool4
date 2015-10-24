@@ -4,12 +4,6 @@
 
 #include "ool.h"
 
-inst_t
-inst_of(inst_t inst)
-{
-  return (inst == 0 ? consts.cl_object : inst->inst_of);
-}
-
 void *
 mem_alloc(unsigned size)
 {
@@ -73,6 +67,36 @@ inst_assign(inst_t *dst, inst_t src)
 
   *dst = inst_retain(src);
   inst_release(temp);
+}
+
+void
+frame_jmp(struct frame_jmp *fr, int code)
+{
+  while (fp < fr->base) {
+    switch (fp->type) {
+    case FRAME_TYPE_WORK:
+      frame_work_pop();
+      break;
+    case FRAME_TYPE_METHOD_CALL:
+      frame_method_call_pop();
+      break;
+    case FRAME_TYPE_MODULE:
+      frame_module_pop();
+      break;
+    case FRAME_TYPE_RESTART:
+      frame_restart_pop();
+      break;
+    case FRAME_TYPE_INPUT:
+      frame_input_pop();
+      break;
+    default:
+      assert(0);
+    }
+  }
+
+  fr->code = code;
+
+  longjmp(fr->jmp_buf, 1);
 }
 
 void
@@ -148,7 +172,7 @@ object_free(inst_t inst, inst_t cl)
 }
 
 void
-cm_object_new(void)
+cm_obj_new(void)
 {
   if (CLASSVAL(MC_ARG(0))->init == 0) {
     fprintf(stderr, "Cannot instantiate\n");
@@ -159,7 +183,7 @@ cm_object_new(void)
 }
 
 void
-cm_object_newc(void)
+cm_obj_newc(void)
 {
   if (CLASSVAL(MC_ARG(0))->init == 0) {
     fprintf(stderr, "Cannot instantiate\n");
@@ -177,6 +201,18 @@ void
 cm_obj_eval(void)
 {
   inst_assign(MC_RESULT, MC_ARG(0));
+}
+
+void
+cm_obj_tostring(void)
+{
+  inst_t cl_name = CLASSVAL(inst_of(MC_ARG(0)))->name;
+  unsigned n = 1 + (STRVAL(cl_name)->size - 1) + 1 + 18 + 1 + 1;
+  char buf[n];
+
+  snprintf(buf, n, "<%s@%p>", STRVAL(cl_name)->data, MC_ARG(0));
+
+  str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
 }
 
 void
@@ -321,6 +357,17 @@ str_equal(inst_t s1, inst_t s2)
   return (STRVAL(s1)->size == STRVAL(s2)->size
 	  && memcmp(STRVAL(s1)->data, STRVAL(s2)->data, STRVAL(s1)->size) == 0
 	  );
+}
+
+void
+cm_str_eval(void)
+{
+  FRAME_WORK_BEGIN(1) {
+    list_new(&WORK(0), MC_ARG(0), 0);
+    list_new(&WORK(0), consts.cl_env, WORK(0));
+    method_call_new(&WORK(0), consts.str_atc, WORK(0));
+    inst_method_call(MC_RESULT, consts.str_eval, 1, &WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -774,12 +821,15 @@ struct {
   inst_t   *sel;
   void     (*func)(void);
 } init_method_tbl[] = {
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_obj_eval },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_obj_tostring },
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc, cm_bool_and },
 
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_addc,     cm_int_add },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
+
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_str_eval },
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_method_call_eval },
 

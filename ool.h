@@ -1,4 +1,5 @@
 #include <string.h>
+#include <setjmp.h>
 #include <stdio.h>
 
 enum {
@@ -119,8 +120,6 @@ struct inst_metaclass {
 #define CLASSVAL(x)  (((struct inst_metaclass *)(x))->val)
 #define CLASSVAL_OFS(x)  (FIELD_OFS(struct inst_metaclass, val-> x))
 
-inst_t inst_of(inst_t inst);
-
 struct {
   inst_t module_main;
   inst_t metaclass;
@@ -175,10 +174,18 @@ struct {
   inst_t str_true;
 } consts;
 
+static inline inst_t
+inst_of(inst_t inst)
+{
+  return (inst == 0 ? consts.cl_object : inst->inst_of);
+}
+
 enum {
   FRAME_TYPE_WORK,
   FRAME_TYPE_METHOD_CALL,
-  FRAME_TYPE_MODULE
+  FRAME_TYPE_MODULE,
+  FRAME_TYPE_RESTART,
+  FRAME_TYPE_INPUT,
 };
 
 struct frame {
@@ -331,7 +338,48 @@ frame_module_pop(void)
 
 #define MODULE_CUR  (modfp->module)
 
-void module_new(inst_t *dst, inst_t name, inst_t parent);
+struct frame_jmp {
+  struct frame base[1];
+  jmp_buf      jmp_buf;
+  int          code;
+};
+
+void frame_jmp(struct frame_jmp *fr, int code);
+
+struct frame_restart {
+  struct frame_jmp     base[1];
+  struct frame_restart *prev;
+};
+
+struct frame_restart *rstfp;
+
+static inline void
+frame_restart_push(struct frame_jmp *fr)
+{
+  frame_push(fr->base, FRAME_TYPE_RESTART);
+  fr->prev = rstfp;
+  rstfp = fr;
+}
+
+static inline void
+frame_restart_pop(void)
+{
+  rstfp = rstfp->prev;
+  frame_pop();
+}
+
+#define RESTART_FRAME_BEGIN					\
+  {								\
+    struct frame_restart __frame_restart[1];			\
+    frame_restart_push(__frame_restart);			\
+    __frame_restart->code = setjmp(__frame_restart->jmp_buf);
+
+#define RESTART_FRAME_CODE (__frame_restart->code)
+
+#define RESTART_FRAME_END	  \
+    frame_restart_pop();	  \
+  }
+
 
 struct stream;
 
