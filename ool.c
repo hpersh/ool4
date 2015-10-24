@@ -148,6 +148,32 @@ object_free(inst_t inst, inst_t cl)
 }
 
 void
+cm_object_new(void)
+{
+  if (CLASSVAL(MC_ARG(0))->init == 0) {
+    fprintf(stderr, "Cannot instantiate\n");
+    error();
+  }
+
+  inst_alloc(MC_RESULT, MC_ARG(0));
+}
+
+void
+cm_object_newc(void)
+{
+  if (CLASSVAL(MC_ARG(0))->init == 0) {
+    fprintf(stderr, "Cannot instantiate\n");
+    error();
+  }
+
+  FRAME_WORK_BEGIN(1) {
+    inst_alloc(&WORK(0), MC_ARG(0));
+    inst_init(WORK(0), 1, MC_ARG(1));
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
 cm_obj_eval(void)
 {
   inst_assign(MC_RESULT, MC_ARG(0));
@@ -165,7 +191,7 @@ bool_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 }
 
 void
-bool_new(inst_t *dst, unsigned val)
+bool_new(inst_t *dst, bool val)
 {
   inst_alloc(dst, consts.cl_bool);
   inst_init(*dst, 1, val);
@@ -199,6 +225,16 @@ void
 cm_int_add(void)
 {
   int_new(MC_RESULT, INTVAL(MC_ARG(0)) + INTVAL(MC_ARG(1)));
+}
+
+void
+cm_int_tostring(void)
+{
+  char buf[32];
+
+  snprintf(buf, sizeof(buf), "%lld", INTVAL(MC_ARG(0)));
+
+  str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
 }
 
 void
@@ -279,7 +315,7 @@ str_hash(inst_t s)
   return (result);
 }
 
-unsigned
+bool
 str_equal(inst_t s1, inst_t s2)
 {
   return (STRVAL(s1)->size == STRVAL(s2)->size
@@ -690,7 +726,9 @@ struct {
   { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
-  { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent }
+  { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent },
+  { &consts.cl_env,         &consts.str_environment, &consts.cl_object, sizeof(struct inst) },
+  { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
 };
 
 struct {
@@ -719,11 +757,14 @@ struct {
   { &consts.str_metaclass,   "#Metaclass" },
   { &consts.str_method_call, "#Method_Call" },
   { &consts.str_module,      "#Module" },
+  { &consts.str_new,         "new" },
+  { &consts.str_newc,        "new:" },
   { &consts.str_object,      "#Object" },
   { &consts.str_pair,        "#Pair" },
   { &consts.str_quote,       "&quote" },
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
+  { &consts.str_tostring,    "tostring" },
   { &consts.str_true,        "#true" }
 };
 
@@ -737,7 +778,8 @@ struct {
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc, cm_bool_and },
 
-  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_addc, cm_int_add },
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_addc,     cm_int_add },
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_method_call_eval },
 
@@ -818,6 +860,8 @@ main(void)
     int_new(&WORK(0), 13);
     int_new(&WORK(1), 42);
     inst_method_call(&WORK(2), consts.str_addc, 2, &WORK(0));
+    inst_method_call(&WORK(3), consts.str_tostring, 1, &WORK(2));
+    printf("%s\n", STRVAL(WORK(3))->data);
     
   } FRAME_WORK_END;
   

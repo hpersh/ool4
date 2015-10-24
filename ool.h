@@ -2,8 +2,9 @@
 #include <stdio.h>
 
 enum {
-  false, true
+  false = 0, true
 };
+typedef unsigned char bool;
 
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof((a)[0]))
 
@@ -24,9 +25,10 @@ struct inst {
 
 struct inst_bool {
   struct inst base[1];
-  unsigned    val;
+  bool        val;
 };
 #define BOOLVAL(x)  (((struct inst_bool *)(x))->val)
+void bool_new(inst_t *dst, bool val);
 
 typedef long long intval_t;
 
@@ -35,12 +37,14 @@ struct inst_int {
   intval_t    val;
 };
 #define INTVAL(x)  (((struct inst_int *)(x))->val)
+void int_new(inst_t *dst, intval_t val);
 
 struct inst_code_method {
   struct inst base[1];
   void        (*val)(void);
 };
 #define CODEMETHODVAL(x)  (((struct inst_code_method *)(x))->val)
+void code_method_new(inst_t *dst, void (*func)(void));
 
 struct inst_str {
   struct inst base[1];
@@ -50,6 +54,7 @@ struct inst_str {
   } val[1];
 };
 #define STRVAL(x)  (((struct inst_str *)(x))->val)
+void str_newc(inst_t *dst, unsigned argc, ...);
 
 struct inst_dptr {
   struct inst base[1];
@@ -59,12 +64,16 @@ struct inst_dptr {
 };
 #define CAR(x)  (((struct inst_dptr *)(x))->val->car)
 #define CDR(x)  (((struct inst_dptr *)(x))->val->cdr)
+void pair_new(inst_t *dst, inst_t car, inst_t cdr);
+void list_new(inst_t *dst, inst_t car, inst_t cdr);
 
 #define METHODCALL_SEL(x)   (CAR(x))
 #define METHODCALL_ARGS(x)  (CDR(x))
+void method_call_new(inst_t *dst, inst_t sel, inst_t args);
 
 #define BLOCK_ARGS(x)  (CAR(x))
 #define BLOCK_BODY(x)  (CDR(x))
+void block_new(inst_t *dst, inst_t args, inst_t body);
 
 struct inst_array {
   struct inst base[1];
@@ -74,6 +83,7 @@ struct inst_array {
   } val[1];
 };
 #define ARRAYVAL(x)  (((struct inst_array *)(x))->val)
+void array_new(inst_t *dst, unsigned size);
 
 struct inst_set {
   struct inst_array base[1];
@@ -83,6 +93,8 @@ struct inst_set {
   } val[1];
 };
 #define SETVAL(x)  (((struct inst_set *)(x))->val)
+void strdict_new(inst_t *dst, unsigned size);
+void dict_new(inst_t *dst, unsigned size);
 
 struct inst_module {
   struct inst_set base[1];
@@ -91,6 +103,7 @@ struct inst_module {
   } val[1];
 };
 #define MODULEVAL(x)  (((struct inst_module *)(x))->val)
+void module_new(inst_t *dst, inst_t name, inst_t parent);
 
 struct inst_metaclass {
   struct inst base[1];
@@ -152,10 +165,13 @@ struct {
   inst_t str_method_call;
   inst_t str_module;
   inst_t str_object;
+  inst_t str_new;
+  inst_t str_newc;
   inst_t str_pair;
   inst_t str_quote;
   inst_t str_string;
   inst_t str_system;
+  inst_t str_tostring;
   inst_t str_true;
 } consts;
 
@@ -315,22 +331,12 @@ frame_module_pop(void)
 
 #define MODULE_CUR  (modfp->module)
 
-void bool_new(inst_t *dst, unsigned val);
-void int_new(inst_t *dst, intval_t val);
-void code_method_new(inst_t *dst, void (*func)(void));
-void str_newc(inst_t *dst, unsigned argc, ...);
-void pair_new(inst_t *dst, inst_t car, inst_t cdr);
-void list_new(inst_t *dst, inst_t car, inst_t cdr);
-void method_call_new(inst_t *dst, inst_t sel, inst_t args);
-void block_new(inst_t *dst, inst_t args, inst_t body);
-void array_new(inst_t *dst, unsigned size);
-void strdict_new(inst_t *dst, unsigned size);
-void dict_new(inst_t *dst, unsigned size);
 void module_new(inst_t *dst, inst_t name, inst_t parent);
 
 struct stream;
 
 struct stream_funcs {
+  bool (*eof)(struct stream *);
   int  (*getc)(struct stream *);
   void (*ungetc)(struct stream *, char);
 };

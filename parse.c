@@ -4,6 +4,12 @@
 #include "ool.h"
 
 
+bool
+stream_eof(struct stream *str)
+{
+  return ((*str->funcs->eof)(str));
+}
+
 int
 stream_getc(struct stream *str)
 {
@@ -16,6 +22,11 @@ stream_ungetc(struct stream *str, char c)
   return ((*str->funcs->ungetc)(str, c));
 }
 
+bool
+stream_file_eof(struct stream *str)
+{
+  return (feof(((struct stream_file *) str)->fp));
+}
 
 int
 stream_file_getc(struct stream *str)
@@ -30,7 +41,8 @@ stream_file_ungetc(struct stream *str, char c)
 }
 
 struct stream_funcs stream_funcs_file[] = {
-  { .getc   = stream_file_getc,
+  { .eof    = stream_file_eof,
+    .getc   = stream_file_getc,
     .ungetc = stream_file_ungetc
   }
 };
