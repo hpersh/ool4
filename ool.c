@@ -861,6 +861,12 @@ init(void)
 
     /* Pass 4 - Fix-up classes */
 
+    inst_assign(&CLASSVAL(consts.metaclass)->name, consts.str_metaclass);
+    strdict_new(&CLASSVAL(consts.metaclass)->cl_vars,    32);
+    strdict_new(&CLASSVAL(consts.metaclass)->cl_methods, 32);
+    strdict_new(&CLASSVAL(consts.metaclass)->inst_vars,    32);
+    strdict_new(&CLASSVAL(consts.metaclass)->inst_methods, 32);
+
     for (i = 0; i < ARRAY_SIZE(init_cl_tbl); ++i) {
       inst_assign(&CLASSVAL(*init_cl_tbl[i].cl)->name,   *init_cl_tbl[i].name);
       strdict_new(&CLASSVAL(*init_cl_tbl[i].cl)->cl_vars,    32);
@@ -913,6 +919,7 @@ main(void)
 	    fprintf(stderr, "Syntax error\n");
 	    continue;
 	  }
+	  inst_method_call(&WORK(0), consts.str_eval, 1, &WORK(0));
 	  inst_method_call(&WORK(0), consts.str_tostring, 1, &WORK(0));
 	  printf("%s\n", STRVAL(WORK(0))->data);
 	}
