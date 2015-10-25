@@ -174,11 +174,70 @@ struct {
   inst_t str_true;
 } consts;
 
+inst_t inst_retain(inst_t inst);
+void   inst_release(inst_t inst);
+
+static inline void
+inst_assign(inst_t *dst, inst_t src)
+{
+  inst_t temp = inst_retain(*dst);
+
+  *dst = inst_retain(src);
+  inst_release(temp);
+}
+
 static inline inst_t
 inst_of(inst_t inst)
 {
   return (inst == 0 ? consts.cl_object : inst->inst_of);
 }
+
+struct stream;
+
+struct stream_funcs {
+  bool (*eof)(struct stream *);
+  int  (*getc)(struct stream *);
+  void (*ungetc)(struct stream *, char c);
+  void (*close)(struct stream *);
+};
+
+struct stream {
+  struct stream_funcs *funcs;
+};
+
+struct stream_file {
+  struct stream base[1];
+  
+  FILE *fp;
+};
+
+void stream_file_init(struct stream_file *str, FILE *fp);
+
+bool stream_eof(struct stream *str);
+int stream_getc(struct stream *str);
+void stream_ungetc(struct stream *str, char c);
+void stream_close(struct stream *str);
+
+struct tokbuf {
+  unsigned bufsize;
+  unsigned len;
+  char     *buf;
+  char     data[32];
+};
+
+struct parse_ctxt {
+  struct stream *str;
+  struct tokbuf tb[1];
+};
+
+void parse_ctxt_init(struct parse_ctxt *pc, struct stream *str);
+void parse_ctxt_fini(struct parse_ctxt *pc);
+
+enum {
+  PARSE_EOF, PARSE_OK, PARSE_ERR
+};
+
+unsigned parse(inst_t *dst, struct parse_ctxt *pc);
 
 enum {
   FRAME_TYPE_WORK,
@@ -380,44 +439,31 @@ frame_restart_pop(void)
     frame_restart_pop();	  \
   }
 
-
-struct stream;
-
-struct stream_funcs {
-  bool (*eof)(struct stream *);
-  int  (*getc)(struct stream *);
-  void (*ungetc)(struct stream *, char);
+struct frame_input {
+  struct frame_jmp   base[1];
+  struct frame_input *prev;
+  struct stream      *str;
+  struct parse_ctxt  pc[1];
 };
 
-struct stream {
-  struct stream_funcs *funcs;
-};
+struct frame_input *inpfp;
 
-struct stream_file {
-  struct stream base[1];
-  
-  FILE *fp;
-};
+static inline void
+frame_input_push(struct frame_input *fr, struct stream *str)
+{
+  frame_push(fr->base->base, FRAME_TYPE_INPUT);
 
-void stream_file_init(struct stream_file *str, FILE *fp);
+  fr->str = str;
 
-struct tokbuf {
-  unsigned bufsize;
-  unsigned len;
-  char     *buf;
-  char     data[32];
-};
+  fr->prev = inpfp;
+  inpfp = fr;
+}
 
-struct parse_ctxt {
-  struct stream *str;
-  struct tokbuf tb[1];
-};
+static inline void
+frame_input_pop(void)
+{
+  stream_close(inpfp->str);
 
-void parse_ctxt_init(struct parse_ctxt *pc, struct stream *str);
-void parse_ctxt_fini(struct parse_ctxt *pc);
-
-enum {
-  PARSE_EOF, PARSE_OK, PARSE_ERR
-};
-
-unsigned parse(inst_t *dst, struct parse_ctxt *pc);
+  inpfp = inpfp->prev;
+  frame_pop();
+}

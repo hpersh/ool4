@@ -61,15 +61,6 @@ inst_release(inst_t inst)
 }
 
 void
-inst_assign(inst_t *dst, inst_t src)
-{
-  inst_t temp = inst_retain(*dst);
-
-  *dst = inst_retain(src);
-  inst_release(temp);
-}
-
-void
 frame_jmp(struct frame_jmp *fr, int code)
 {
   while (fp < fr->base) {
@@ -94,9 +85,7 @@ frame_jmp(struct frame_jmp *fr, int code)
     }
   }
 
-  fr->code = code;
-
-  longjmp(fr->jmp_buf, 1);
+  longjmp(fr->jmp_buf, code);
 }
 
 void
