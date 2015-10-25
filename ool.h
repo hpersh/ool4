@@ -214,13 +214,13 @@ struct stream_file {
 void stream_file_init(struct stream_file *str, FILE *fp);
 
 bool stream_eof(struct stream *str);
-int stream_getc(struct stream *str);
+int  stream_getc(struct stream *str);
 void stream_ungetc(struct stream *str, char c);
 void stream_close(struct stream *str);
 
 struct tokbuf {
   unsigned bufsize;
-  unsigned len;
+  unsigned len ;
   char     *buf;
   char     data[32];
 };
@@ -360,7 +360,7 @@ frame_method_call_pop(void)
   }
 
 struct frame_module {
-  struct frame base[1];
+  struct frame        base[1];
   struct frame_module *prev;
   inst_t              module;
 };
@@ -462,8 +462,21 @@ frame_input_push(struct frame_input *fr, struct stream *str)
 static inline void
 frame_input_pop(void)
 {
+  parse_ctxt_fini(inpfp->pc);
   stream_close(inpfp->str);
 
   inpfp = inpfp->prev;
   frame_pop();
 }
+
+#define FRAME_INPUT_BEGIN(_str)				\
+  {							\
+    struct frame_input __frame_input[1];		\
+    frame_input_push(__frame_input, (_str));
+
+#define FRAME_INPUT_STR  (inpfp->str)
+#define FRAME_INPUT_PC   (inpfp->pc)
+
+#define FRAME_INPUT_END \
+    frame_input_pop();	\
+  }

@@ -734,12 +734,14 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
     cl = inst_of(f);
     if (cl == consts.cl_code_method) {
       (*CODEMETHODVAL(f))();
-
-      return;
+      goto done;
     }
     
     fprintf(stderr, "Bad method\n");
     error();
+
+  done:
+    ;
   } FRAME_METHOD_CALL_END;
 }
 
@@ -895,14 +897,28 @@ main(void)
 {
   init();
 
-  FRAME_WORK_BEGIN(10) {
-    int_new(&WORK(0), 13);
-    int_new(&WORK(1), 42);
-    inst_method_call(&WORK(2), consts.str_addc, 2, &WORK(0));
-    inst_method_call(&WORK(3), consts.str_tostring, 1, &WORK(2));
-    printf("%s\n", STRVAL(WORK(3))->data);
-    
-  } FRAME_WORK_END;
-  
+  struct stream_file str[1];
+
+  stream_file_init(str, stdin);
+
+  FRAME_MODULE_BEGIN(consts.module_main) {
+    FRAME_WORK_BEGIN(1) {
+      FRAME_INPUT_BEGIN(str->base) {
+	for (;;) {
+	  parse_ctxt_init(FRAME_INPUT_PC, FRAME_INPUT_STR);
+	  unsigned rc = parse(&WORK(0), FRAME_INPUT_PC);
+	  if (rc == PARSE_EOF)  break;
+	  parse_ctxt_fini(FRAME_INPUT_PC);
+	  if (rc == PARSE_ERR) {
+	    fprintf(stderr, "Syntax error\n");
+	    continue;
+	  }
+	  inst_method_call(&WORK(0), consts.str_tostring, 1, &WORK(0));
+	  printf("%s\n", STRVAL(WORK(0))->data);
+	}
+      } FRAME_INPUT_END;
+    } FRAME_WORK_END;
+  } FRAME_MODULE_END;
+
   return (0);
 }
