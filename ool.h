@@ -354,9 +354,9 @@ struct frame_restart {
 struct frame_restart *rstfp;
 
 static inline void
-frame_restart_push(struct frame_jmp *fr)
+frame_restart_push(struct frame_restart *fr)
 {
-  frame_push(fr->base, FRAME_TYPE_RESTART);
+  frame_push(fr->base->base, FRAME_TYPE_RESTART);
   fr->prev = rstfp;
   rstfp = fr;
 }
