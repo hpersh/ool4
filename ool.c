@@ -103,7 +103,13 @@ frame_jmp(struct frame_jmp *fr, int code)
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
-  inst_t inst = (inst_t) mem_allocz(CLASSVAL(cl)->inst_size);
+  inst_t inst;
+
+  if (list_empty(CLASSVAL(cl)->inst_cache)) {
+    inst = (inst_t) mem_allocz(CLASSVAL(cl)->inst_size);
+  } else {
+    
+  }
 
   inst_assign(&inst->inst_of, cl);
   inst_assign(dst, inst);
@@ -164,12 +170,13 @@ object_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 void
 object_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
+  (*func)(inst->inst_of);
 }
 
 void
 object_free(inst_t inst, inst_t cl)
 {
-  mem_free(inst, CLASSVAL(inst_of(inst))->inst_size);
+  list_insert(inst->list_node, list_end(CLASSVAL(inst_of(inst))->inst_cache));
 }
 
 void
@@ -875,6 +882,8 @@ init(void)
       CLASSVAL(*init_cl_tbl[i].cl)->init      = init_cl_tbl[i].init;
       CLASSVAL(*init_cl_tbl[i].cl)->walk      = init_cl_tbl[i].walk;
       CLASSVAL(*init_cl_tbl[i].cl)->free      = init_cl_tbl[i].free;
+      list_init(CLASSVAL(*init_cl_tbl[i].cl)->_inst_cache);
+      CLASSVAL(*init_cl_tbl[i].cl)->inst_cache = CLASSVAL(*init_cl_tbl[i].cl)->_inst_cache;
     }
 
     /* Pass 3 - Create strings */

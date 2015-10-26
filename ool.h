@@ -2,15 +2,65 @@
 #include <setjmp.h>
 #include <stdio.h>
 
+#define ARRAY_SIZE(a)  (sizeof(a) / sizeof((a)[0]))
+
+#define PTR_TO_UINT(x)  ((unsigned long long)(x))
+#define FIELD_OFS(s, f)  PTR_TO_UINT(&((s *) 0)->f)
+#define CONTAINER_OF(p, s, f)  
+
 enum {
   false = 0, true
 };
 typedef unsigned char bool;
 
-#define ARRAY_SIZE(a)  (sizeof(a) / sizeof((a)[0]))
+struct list {
+  struct list *prev, *next;
+};
 
-#define PTR_TO_UINT(x)  ((unsigned long long)(x))
-#define FIELD_OFS(s, f)  PTR_TO_UINT(&((s *) 0)->f)
+static inline void
+list_init(struct list *li)
+{
+  list->prev = list->next = li;
+}
+
+static inline bool
+list_empty(struct list *li)
+{
+  return (li->next == li);
+}
+
+static inline struct list *
+list_first(struct list *li)
+{
+  return(li->next);
+}
+
+static inline struct list *
+list_last(struct list *li)
+{
+  return(li->prev);
+}
+
+static inline struct list *
+list_end(struct list *li)
+{
+  return(li);
+}
+
+static inline struct list *
+list_prev(struct list *item)
+{
+  return(item->prev);
+}
+
+static inline struct list *
+list_next(struct list *item)
+{
+  return(item->next);
+}
+
+struct list *list_insert(struct list *item, struct list *before);
+void        list_erase(struct list *item);
 
 void *mem_alloc(unsigned size);
 void *mem_allocz(unsigned size);
@@ -20,8 +70,9 @@ struct inst;
 typedef struct inst *inst_t;
 
 struct inst {
-  unsigned ref_cnt;
-  inst_t   inst_of;
+  struct list list_node[1];
+  unsigned    ref_cnt;
+  inst_t      inst_of;
 };
 
 struct inst_bool {
@@ -115,6 +166,7 @@ struct inst_metaclass {
     void (*init)(inst_t inst, inst_t cl, unsigned argc, va_list ap);
     void (*walk)(inst_t inst, inst_t cl, void (*func)(inst_t));
     void (*free)(inst_t inst, inst_t cl);
+    struct list _inst_cache[1], *inst_cache;
   } val[1];
 };
 #define CLASSVAL(x)  (((struct inst_metaclass *)(x))->val)
