@@ -107,6 +107,7 @@ struct inst_str {
 };
 #define STRVAL(x)  (((struct inst_str *)(x))->val)
 void str_newc(inst_t *dst, unsigned argc, ...);
+void str_newv(inst_t *dst, unsigned n, inst_t *data);
 
 struct inst_dptr {
   struct inst base[1];

@@ -293,6 +293,23 @@ cm_bool_and(void)
 }
 
 void
+cm_bool_tostring(void)
+{
+  unsigned n;
+  char     *s;
+
+  if (BOOLVAL(MC_ARG(0))) {
+    n = 6;
+    s = "#true";
+  } else {
+    n = 7;
+    s = "#false";
+  }
+
+  str_newc(MC_RESULT, 1, n, s);
+}
+
+void
 int_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc > 0);
@@ -393,6 +410,33 @@ str_newc(inst_t *dst, unsigned argc, ...)
   } FRAME_WORK_END;
 }
 
+void
+str_newv(inst_t *dst, unsigned n, inst_t *data)
+{
+  FRAME_WORK_BEGIN(1) {
+    inst_t   *p;
+    unsigned len, k;
+    char     *s;
+    
+    for (len = 0, p = data, k = n; k > 0; --k, ++p) {
+      len += STRVAL(*p)->size - 1;
+    }
+    ++len;
+    
+    inst_alloc(&WORK(0), consts.cl_str);
+    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len);
+
+    for (p = data, k = n; k > 0; --k, ++p) {
+      len = STRVAL(*p)->size - 1;
+      memcpy(s, STRVAL(*p)->data, len);
+      s += len;
+    }
+    *s = 0;
+
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
 unsigned
 str_hash(inst_t s)
 {
@@ -420,6 +464,12 @@ cm_str_eval(void)
     inst_assign(&WORK(1), MC_ARG(0));
     inst_method_call(MC_RESULT, consts.str_atc, 2, &WORK(0));
   } FRAME_WORK_END;
+}
+
+void
+cm_str_tostring(void)
+{
+  inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
@@ -454,6 +504,22 @@ pair_new(inst_t *dst, inst_t car, inst_t cdr)
 }
 
 void
+cm_pair_tostring(void)
+{
+  FRAME_WORK_BEGIN(1) {
+    array_new(&WORK(0), 5);
+
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, "(");
+    inst_method_call(&ARRAYVAL(WORK(0))->data[1], consts.str_tostring, 1, &CAR(MC_ARG(0)));
+    str_newc(&ARRAYVAL(WORK(0))->data[2], 1, 3, ", ");
+    inst_method_call(&ARRAYVAL(WORK(0))->data[3], consts.str_tostring, 1, &CDR(MC_ARG(0)));
+    str_newc(&ARRAYVAL(WORK(0))->data[4], 1, 2, ")");
+
+    str_newv(MC_RESULT, ARRAYVAL(WORK(0))->size, ARRAYVAL(WORK(0))->data);
+  } FRAME_WORK_END;
+}
+
+void
 list_new(inst_t *dst, inst_t car, inst_t cdr)
 {
   FRAME_WORK_BEGIN(1) {
@@ -471,6 +537,32 @@ list_len(inst_t li)
   for (result = 0; li != 0; li = CDR(li))  ++result;
 
   return (result);
+}
+
+void
+cm_list_tostring(void)
+{
+  FRAME_WORK_BEGIN(1) {
+    unsigned n = list_len(MC_ARG(0));
+    unsigned nn = (n == 0) ? 2 : (2 * n + 1), k;
+    inst_t *p, q;
+
+    array_new(&WORK(0), 1 + nn);
+
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "(");
+    for (p = &ARRAYVAL(WORK(0))->data[2], q = MC_ARG(0); q != 0; q = CDR(q)) {
+      if (q != MC_ARG(0)) {
+	inst_assign(p, ARRAYVAL(WORK(0))->data[0]);
+	++p;
+      }
+      inst_method_call(p, consts.str_tostring, 1, &CAR(q));
+      ++p;
+    }
+    str_newc(p, 1, 2, ")");
+
+    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
+  } FRAME_WORK_END;
 }
 
 void
@@ -890,7 +982,12 @@ struct {
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_addc,     cm_int_add },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_str_eval },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_str_tostring },
+
+  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_pair_tostring },
+
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring },
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_method_call_eval },
 
