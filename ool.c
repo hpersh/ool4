@@ -4,12 +4,21 @@
 
 #include "ool.h"
 
+struct {
+  unsigned long long mem_alloced, mem_freed, mem_in_use, mem_in_use_max;
+} stats[1];
+
 void *
 mem_alloc(unsigned size)
 {
   void *result = malloc(size);
 
   assert(result != 0);
+
+  stats->mem_alloced += size;
+  if ((stats->mem_in_use += size) > stats->mem_in_use_max) {
+    stats->mem_in_use_max = stats->mem_in_use;
+  }
 
   return (result);
 }
@@ -28,6 +37,9 @@ void
 mem_free(void *p, unsigned size)
 {
   free(p);
+
+  stats->mem_freed += size;
+  stats->mem_in_use -= size;
 }
 
 void
@@ -910,6 +922,16 @@ init(void)
   } FRAME_WORK_END;
 }
 
+void
+stats_dump(void)
+{
+  printf("Memory:\n");
+  printf("  Alloced: \t%llu\n", stats->mem_alloced);
+  printf("  Freed: \t%llu\n", stats->mem_freed);
+  printf("  In use: \t%llu\n", stats->mem_in_use);
+  printf("  In use (max): \t%llu\n", stats->mem_in_use_max);
+}
+
 int
 main(void)
 {
@@ -938,6 +960,8 @@ main(void)
       } FRAME_INPUT_END;
     } FRAME_WORK_END;
   } FRAME_MODULE_END;
+
+  stats_dump();
 
   return (0);
 }
