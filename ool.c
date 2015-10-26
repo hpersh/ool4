@@ -187,6 +187,12 @@ cm_obj_newc(void)
 }
 
 void
+cm_obj_quote(void)
+{
+  inst_assign(MC_RESULT, MC_ARG(0));
+}
+
+void
 cm_obj_eval(void)
 {
   inst_assign(MC_RESULT, MC_ARG(0));
@@ -423,15 +429,21 @@ method_call_new(inst_t *dst, inst_t sel, inst_t args)
 void
 cm_method_call_eval(void)
 {
+  inst_t sel = METHODCALL_SEL(MC_ARG(0)), args = METHODCALL_ARGS(MC_ARG(0));
+  bool   noevalf = STRVAL(sel)->size > 1 && STRVAL(sel)->data[0] == '&';
+  unsigned nargs = list_len(args);
+  
   FRAME_WORK_BEGIN(1) {
-    inst_t   args = METHODCALL_ARGS(MC_ARG(0));
-    unsigned nargs = list_len(args);
     array_new(&WORK(0), nargs);
     inst_t *p;
     for (p = ARRAYVAL(WORK(0))->data; nargs > 0; --nargs, ++p, args = CDR(args)) {
+      if (noevalf) {
+	inst_assign(p, CAR(args));
+	continue;
+      }
       inst_method_call(p, consts.str_eval, 1, &CAR(args));
     }
-    inst_method_call(MC_RESULT, METHODCALL_SEL(MC_ARG(0)), ARRAYVAL(WORK(0))->size, ARRAYVAL(WORK(0))->data);
+    inst_method_call(MC_RESULT, sel, ARRAYVAL(WORK(0))->size, ARRAYVAL(WORK(0))->data);
   } FRAME_WORK_END;
 }
 
@@ -812,6 +824,7 @@ struct {
   inst_t   *sel;
   void     (*func)(void);
 } init_method_tbl[] = {
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_quote,    cm_obj_quote },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_obj_tostring },
 
