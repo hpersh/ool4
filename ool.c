@@ -4,6 +4,26 @@
 
 #include "ool.h"
 
+struct list *
+list_insert(struct list *item, struct list *before)
+{
+  struct list *p = before->prev;
+
+  item->prev = p;
+  item->next = before;
+
+  return (p->next = before->prev = item);
+}
+
+void
+list_erase(struct list *item)
+{
+  struct list *p = item->prev, *q = item->next;
+
+  p->next = q;
+  q->prev = p;
+}
+
 struct {
   unsigned long long mem_alloced, mem_freed, mem_in_use, mem_in_use_max;
 } stats[1];
@@ -100,15 +120,34 @@ frame_jmp(struct frame_jmp *fr, int code)
   longjmp(fr->jmp_buf, code);
 }
 
+struct list *
+cl_inst_cache(inst_t cl)
+{
+  unsigned inst_size = CLASSVAL(cl)->inst_size;
+  inst_t p;
+
+  for (p = cl; cl != 0; cl = CLASSVAL(cl)->parent) {
+    if (CLASSVAL(cl)->inst_size != inst_size)  break;
+    p = cl;
+  }
+
+  return (CLASSVAL(p)->inst_cache);
+}
+
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
   inst_t inst;
+  struct list *inst_cache = cl_inst_cache(cl);
 
-  if (list_empty(CLASSVAL(cl)->inst_cache)) {
+  if (list_empty(inst_cache)) {
     inst = (inst_t) mem_allocz(CLASSVAL(cl)->inst_size);
   } else {
-    
+    struct list *p = list_first(inst_cache);
+    list_erase(p);
+
+    inst = CONTAINER_OF(p, struct inst, list_node);
+    memset(inst, 0, CLASSVAL(cl)->inst_size);
   }
 
   inst_assign(&inst->inst_of, cl);
@@ -176,7 +215,7 @@ object_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 object_free(inst_t inst, inst_t cl)
 {
-  list_insert(inst->list_node, list_end(CLASSVAL(inst_of(inst))->inst_cache));
+  list_insert(inst->list_node, list_end(cl_inst_cache(inst_of(inst))));
 }
 
 void
@@ -868,6 +907,8 @@ init(void)
 
     consts.metaclass = (inst_t) mem_allocz(sizeof(struct inst_metaclass));
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
+    list_init(CLASSVAL(consts.metaclass)->_inst_cache);
+    CLASSVAL(consts.metaclass)->inst_cache = CLASSVAL(consts.metaclass)->_inst_cache;
 
     /* Pass 2 - Create classes */
 

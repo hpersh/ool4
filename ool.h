@@ -6,7 +6,7 @@
 
 #define PTR_TO_UINT(x)  ((unsigned long long)(x))
 #define FIELD_OFS(s, f)  PTR_TO_UINT(&((s *) 0)->f)
-#define CONTAINER_OF(p, s, f)  
+#define CONTAINER_OF(p, s, f)  ((s *)((char *)(p) - FIELD_OFS(s, f)))
 
 enum {
   false = 0, true
@@ -20,7 +20,7 @@ struct list {
 static inline void
 list_init(struct list *li)
 {
-  list->prev = list->next = li;
+  li->prev = li->next = li;
 }
 
 static inline bool
