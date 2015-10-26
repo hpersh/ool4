@@ -357,11 +357,10 @@ str_equal(inst_t s1, inst_t s2)
 void
 cm_str_eval(void)
 {
-  FRAME_WORK_BEGIN(1) {
-    list_new(&WORK(0), MC_ARG(0), 0);
-    list_new(&WORK(0), consts.cl_env, WORK(0));
-    method_call_new(&WORK(0), consts.str_atc, WORK(0));
-    inst_method_call(MC_RESULT, consts.str_eval, 1, &WORK(0));
+  FRAME_WORK_BEGIN(2) {
+    inst_assign(&WORK(0), consts.cl_env);
+    inst_assign(&WORK(1), MC_ARG(0));
+    inst_method_call(MC_RESULT, consts.str_atc, 2, &WORK(0));
   } FRAME_WORK_END;
 }
 
