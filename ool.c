@@ -578,7 +578,7 @@ method_call_new(inst_t *dst, inst_t sel, inst_t args)
 void
 cm_method_call_eval(void)
 {
-  inst_t sel = METHODCALL_SEL(MC_ARG(0)), args = METHODCALL_ARGS(MC_ARG(0));
+  inst_t sel = CAR(MC_ARG(0)), args = CDR(MC_ARG(0));
   bool   noevalf = STRVAL(sel)->size > 1 && STRVAL(sel)->data[0] == '&';
   unsigned nargs = list_len(args);
   
@@ -1092,10 +1092,8 @@ main(void)
     FRAME_WORK_BEGIN(1) {
       FRAME_INPUT_BEGIN(str->base) {
 	for (;;) {
-	  parse_ctxt_init(FRAME_INPUT_PC, FRAME_INPUT_STR);
-	  unsigned rc = parse(&WORK(0), FRAME_INPUT_PC);
+	  unsigned rc = parse(&WORK(0));
 	  if (rc == PARSE_EOF)  break;
-	  parse_ctxt_fini(FRAME_INPUT_PC);
 	  if (rc == PARSE_ERR) {
 	    fprintf(stderr, "Syntax error\n");
 	    continue;

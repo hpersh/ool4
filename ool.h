@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <string.h>
 #include <setjmp.h>
 #include <stdio.h>
@@ -91,6 +92,15 @@ struct inst_int {
 #define INTVAL(x)  (((struct inst_int *)(x))->val)
 void int_new(inst_t *dst, intval_t val);
 
+typedef long double floatval_t;
+
+struct inst_float {
+  struct inst base[1];
+  floatval_t  val;
+};
+#define FLOATVAL(x)  (((struct inst_float *)(x))->val)
+void float_new(inst_t *dst, floatval_t val);
+
 struct inst_code_method {
   struct inst base[1];
   void        (*val)(void);
@@ -119,13 +129,7 @@ struct inst_dptr {
 #define CDR(x)  (((struct inst_dptr *)(x))->val->cdr)
 void pair_new(inst_t *dst, inst_t car, inst_t cdr);
 void list_new(inst_t *dst, inst_t car, inst_t cdr);
-
-#define METHODCALL_SEL(x)   (CAR(x))
-#define METHODCALL_ARGS(x)  (CDR(x))
 void method_call_new(inst_t *dst, inst_t sel, inst_t args);
-
-#define BLOCK_ARGS(x)  (CAR(x))
-#define BLOCK_BODY(x)  (CDR(x))
 void block_new(inst_t *dst, inst_t args, inst_t body);
 
 struct inst_array {
@@ -146,6 +150,7 @@ struct inst_set {
   } val[1];
 };
 #define SETVAL(x)  (((struct inst_set *)(x))->val)
+void set_new(inst_t *dst, unsigned size);
 void strdict_new(inst_t *dst, unsigned size);
 void dict_new(inst_t *dst, unsigned size);
 
@@ -174,8 +179,8 @@ struct inst_metaclass {
 #define CLASSVAL_OFS(x)  (FIELD_OFS(struct inst_metaclass, val-> x))
 
 struct {
-  inst_t module_main;
   inst_t metaclass;
+  inst_t module_main;
 
   inst_t cl_object;
   inst_t cl_bool;
@@ -233,7 +238,7 @@ void   inst_release(inst_t inst);
 static inline void
 inst_assign(inst_t *dst, inst_t src)
 {
-  inst_t temp = inst_retain(*dst);
+  inst_t temp = *dst;
 
   *dst = inst_retain(src);
   inst_release(temp);
@@ -264,7 +269,15 @@ struct stream_file {
   FILE *fp;
 };
 
+struct stream_buf {
+  struct stream base[1];
+  
+  char     *buf;
+  unsigned len, ofs;
+};
+
 void stream_file_init(struct stream_file *str, FILE *fp);
+void stream_buf_init(struct stream_buf *str, char *buf, unsigned len);
 
 bool stream_eof(struct stream *str);
 int  stream_getc(struct stream *str);
@@ -275,22 +288,45 @@ struct tokbuf {
   unsigned bufsize;
   unsigned len ;
   char     *buf;
-  char     data[32];
 };
+
+static inline void
+tokbuf_init(struct tokbuf *tb)
+{
+  tb->buf = (char *) mem_alloc(tb->bufsize = 32);
+  tb->len = 0;
+}
+
+static inline void
+tokbuf_fini(struct tokbuf *tb)
+{
+  if (tb->buf != 0)  mem_free(tb->buf, tb->bufsize);
+}
 
 struct parse_ctxt {
   struct stream *str;
   struct tokbuf tb[1];
 };
 
-void parse_ctxt_init(struct parse_ctxt *pc, struct stream *str);
-void parse_ctxt_fini(struct parse_ctxt *pc);
+static void inline
+parse_ctxt_init(struct parse_ctxt *pc, struct stream *str)
+{
+  pc->str = str;
+  tokbuf_init(pc->tb);
+}
+
+static inline void
+parse_ctxt_fini(struct parse_ctxt *pc)
+{
+  tokbuf_fini(pc->tb);
+  stream_close(pc->str);
+}
 
 enum {
   PARSE_EOF, PARSE_OK, PARSE_ERR
 };
 
-unsigned parse(inst_t *dst, struct parse_ctxt *pc);
+unsigned parse(inst_t *dst);
 
 enum {
   FRAME_TYPE_WORK,
@@ -341,8 +377,6 @@ frame_work_push(struct frame_work *fr, unsigned size, inst_t *data)
 
   wfp = fr;
 }
-
-void inst_release(inst_t inst);
 
 static inline void
 frame_work_pop(void)
@@ -444,11 +478,11 @@ frame_module_pop(void)
     struct frame_module __fr[1];		\
     frame_module_push(__fr, (_mod));
 
+#define MODULE_CUR  (modfp->module)
+
 #define FRAME_MODULE_END \
     frame_module_pop();	 \
   }
-
-#define MODULE_CUR  (modfp->module)
 
 struct frame_jmp {
   struct frame base[1];
@@ -495,7 +529,6 @@ frame_restart_pop(void)
 struct frame_input {
   struct frame_jmp   base[1];
   struct frame_input *prev;
-  struct stream      *str;
   struct parse_ctxt  pc[1];
 };
 
@@ -506,7 +539,7 @@ frame_input_push(struct frame_input *fr, struct stream *str)
 {
   frame_push(fr->base->base, FRAME_TYPE_INPUT);
 
-  fr->str = str;
+  parse_ctxt_init(fr->pc, str);
 
   fr->prev = inpfp;
   inpfp = fr;
@@ -516,7 +549,6 @@ static inline void
 frame_input_pop(void)
 {
   parse_ctxt_fini(inpfp->pc);
-  stream_close(inpfp->str);
 
   inpfp = inpfp->prev;
   frame_pop();
@@ -525,9 +557,9 @@ frame_input_pop(void)
 #define FRAME_INPUT_BEGIN(_str)				\
   {							\
     struct frame_input __frame_input[1];		\
-    frame_input_push(__frame_input, (_str));
+    frame_input_push(__frame_input, (_str));		\
+    parse_ctxt_init(__frame_input->pc, (_str));
 
-#define FRAME_INPUT_STR  (inpfp->str)
 #define FRAME_INPUT_PC   (inpfp->pc)
 
 #define FRAME_INPUT_END \
