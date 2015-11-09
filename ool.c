@@ -137,11 +137,15 @@ cl_inst_cache(inst_t cl)
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
-  inst_t inst;
+  unsigned inst_size = CLASSVAL(cl)->inst_size;
+
+  if (inst_size <= sizeof(struct inst))  error("Cannot instantiate\n");
+  
   struct list *inst_cache = cl_inst_cache(cl);
+  inst_t inst;
 
   if (list_empty(inst_cache)) {
-    inst = (inst_t) mem_allocz(CLASSVAL(cl)->inst_size);
+    inst = (inst_t) mem_allocz(inst_size);
   } else {
     struct list *p = list_first(inst_cache);
     list_erase(p);
@@ -195,8 +199,10 @@ inst_init(inst_t inst, unsigned argc, ...)
 void inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv);
 
 void
-error(void)
+error(char *msg)
 {
+  fprintf(stderr, "%s", msg);
+
   abort();
 }
 
@@ -221,22 +227,12 @@ object_free(inst_t inst, inst_t cl)
 void
 cm_obj_new(void)
 {
-  if (CLASSVAL(MC_ARG(0))->init == 0) {
-    fprintf(stderr, "Cannot instantiate\n");
-    error();
-  }
-
   inst_alloc(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_newc(void)
 {
-  if (CLASSVAL(MC_ARG(0))->init == 0) {
-    fprintf(stderr, "Cannot instantiate\n");
-    error();
-  }
-
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), MC_ARG(0));
     inst_init(WORK(0), 1, MC_ARG(1));
@@ -810,10 +806,7 @@ env_at(inst_t var)
 {						
   inst_t *p = env_find(var);
 
-  if (p == 0) {
-    fprintf(stderr, "Symbol not bound\n");
-    error();
-  }
+  if (p == 0)  error("Symbol not bound\n");
 
   return (*p);
 }
@@ -887,10 +880,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
   if (f == 0)                  f = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
 
   FRAME_METHOD_CALL_BEGIN(dst, found_cl, sel, argc, argv) {
-    if (f == 0) {
-      fprintf(stderr, "Method not found\n");
-      error();
-    }
+    if (f == 0)  error("Method not found\n");
 
     cl = inst_of(f);
     if (cl == consts.cl_code_method) {
@@ -898,8 +888,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
       goto done;
     }
     
-    fprintf(stderr, "Bad method\n");
-    error();
+    error("Bad method\n");
 
   done:
     ;

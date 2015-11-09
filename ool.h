@@ -565,3 +565,5 @@ frame_input_pop(void)
 #define FRAME_INPUT_END \
     frame_input_pop();	\
   }
+
+void error(char *msg);
