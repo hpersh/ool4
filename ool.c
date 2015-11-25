@@ -345,9 +345,15 @@ void inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv);
 void
 error(char *msg)
 {
-  fprintf(stderr, "%s", msg);
+  fprintf(stderr, "%s\n", msg);
 
   abort();
+}
+
+void
+error_argc(void)
+{
+  error("Incorrect number of arguments");
 }
 
 void
@@ -848,6 +854,12 @@ array_new(inst_t *dst, unsigned size)
 }
 
 void
+cm_array_new(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+}
+
+void
 dict_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc > 0);
@@ -958,7 +970,7 @@ env_at(inst_t var)
 {						
   inst_t *p = env_find(var);
 
-  if (p == 0)  error("Symbol not bound\n");
+  if (p == 0)  error("Symbol not bound");
 
   return (*p);
 }
@@ -1032,7 +1044,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
   if (f == 0)                  f = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
 
   FRAME_METHOD_CALL_BEGIN(dst, found_cl, sel, argc, argv) {
-    if (f == 0)  error("Method not found\n");
+    if (f == 0)  error("Method not found");
 
     cl = inst_of(f);
     if (cl == consts.cl_code_method) {
@@ -1040,7 +1052,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
       goto done;
     }
     
-    error("Bad method\n");
+    error("Bad method");
 
   done:
     ;
