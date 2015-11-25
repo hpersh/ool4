@@ -94,67 +94,33 @@ isspecial(unsigned c)
 }
 
 void
-tokbuf_fini(struct tokbuf *tb)
-{
-  if (tb->bufsize > 0)  mem_gen_blk_free(tb->buf, tb->bufsize);
-}
-
-void
-tokbuf_init(struct tokbuf *tb)
-{
-  memset(tb, 0, sizeof(*tb));
-}
-
-void
 tokbuf_append_char(struct tokbuf *tb, char c)
 {
   char     *p;
   unsigned n;
 
-  if (tb->len < ARRAY_SIZE(tb->data)) {
-    p = tb->data;
-  } else {
-    if (tb->len >= tb->bufsize) {
-      n = (tb->bufsize == 0 ? ARRAY_SIZE(tb->data) : tb->bufsize) << 1;
-      p = mem_gen_blk_alloc(n);
-      if (tb->bufsize == 0) {
-	memcpy(p, tb->data, tb->len);
-      } else {
-	memcpy(p, tb->buf, tb->len);
-	mem_gen_blk_free(tb->buf, tb->bufsize);
-      }
-      
-      tb->bufsize = n;
-      tb->buf     = p;
-    }
-
-    p = tb->buf;
+  if (tb->len >= tb->bufsize) {
+    n = tb->bufsize << 1;
+    p = mem_gen_blk_alloc(n);
+    memcpy(p, tb->buf, tb->len);
+    mem_gen_blk_free(tb->buf, tb->bufsize);
+    
+    tb->bufsize = n;
+    tb->buf     = p;
   }
-
-  p[tb->len] = c;
-  ++tb->len;
-}
-
-char *
-tokbuf_data(struct tokbuf *tb)
-{
-  return (tb->bufsize > 0 ? tb->buf : tb->data);
+  
+  tb->buf[tb->len++] = c;
 }
 
 unsigned
-tokbuf_len(struct tokbuf *tb)
+token_get(void)
 {
-  return (tb->len);
-}
-
-unsigned
-token_get(struct stream *str, struct tokbuf *tb)
-{
+  struct stream *str = FRAME_INPUT_PC->str;
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
   unsigned result = false, eof = false;
   char     c;
 
-  tokbuf_fini(tb);
-  tokbuf_init(tb);
+  tb->len = 0;
 
   for (;;) {
     c = stream_getc(str);
@@ -224,21 +190,15 @@ token_get(struct stream *str, struct tokbuf *tb)
   return (result);
 }
 
-
-
-unsigned parse_token(inst_t *dst, struct stream *str, char *buf, unsigned len);
+unsigned parse_token(inst_t *dst);
 
 unsigned
-parse_quote(inst_t *dst, struct stream *str)
+parse_quote(inst_t *dst)
 {
   unsigned result;
 
   FRAME_WORK_BEGIN(1) {
-    struct parse_ctxt pc[1];
-
-    parse_ctxt_init(pc, str);
-
-    result = parse(&WORK(0), pc);
+    result = parse(&WORK(0));
     if (result) {
       list_new(&WORK(0), WORK(0), 0);
       
@@ -246,106 +206,89 @@ parse_quote(inst_t *dst, struct stream *str)
       
       inst_assign(dst, WORK(0));
     }
-    
-    parse_ctxt_fini(pc);
   } FRAME_WORK_END;
 
   return (result);
 }
 
 unsigned
-parse_pair_or_list(inst_t *dst, struct stream *str)
+parse_pair_or_list(inst_t *dst)
 {
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
   unsigned result = false;
   unsigned pairf = false;
 
   FRAME_WORK_BEGIN(2) {
-    struct parse_ctxt pc[1];
-
-    parse_ctxt_init(pc, str);
-    
     unsigned i;
     inst_t   *p;
   
     for (i = 0, p = &WORK(0); ; ++i) {
-      if (!token_get(str, pc->tb))  break;
+      if (!token_get())  break;
       
-      char *t    = tokbuf_data(pc->tb);
-      unsigned n = tokbuf_len(pc->tb);
-      
-      if (n == 2 && t[0] == ',') {
-	if (i != 1)  break;
-	
-	pairf = true;
-	
-	continue;
-      }
-      
-      if (n == 2) {
-	if (t[0] == ')') {
+      if (tb->len == 2) {
+	switch (tb->buf[0]) {
+	case ']':
+	case '}':
+	  goto done;
+	case ',':
+	  if (i != 1)  goto done;
+	  pairf = true;
+	  continue;
+	case ')':
 	  result = true;
-	  
-	  break;
+	  goto done;
 	}
+      }
 	
-	if (t[0] == ']' || t[0] =='}') {
-	  break;
-	}
-	
+      if (pairf && i > 2
+	  || !parse_token(&WORK(1))
+	  ) {
+	goto done;
       }
       
-      if (pairf && i > 2)  break;
-      
-      if (!parse_token(&WORK(1), str, t, n))  break;
-      
+      list_new(p, WORK(1), 0);
+      p = &CDR(*p);
+    }
+
+  done:
+    if (result) {
       if (pairf) {
-	pair_new(&WORK(0), CAR(WORK(0)), WORK(1));
+	pair_new(dst, CAR(WORK(0)), CAR(CDR(WORK(0))));
       } else {
-	list_new(p, WORK(1), 0);
-	p = &CDR(*p);
+	inst_assign(dst, WORK(0));
       }
     }
-    
-    parse_ctxt_fini(pc);
-    
-    if (result)  inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
 
   return (result);
 }
 
 unsigned
-parse_method_call(inst_t *dst, struct stream *str)
+parse_method_call(inst_t *dst)
 {
   unsigned result = false;
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
 
   FRAME_WORK_BEGIN(3) {
-    struct parse_ctxt pc[1];
-
-    parse_ctxt_init(pc, str);
-
     unsigned i;
     inst_t    *p;
 
     for (i = 0, p = &WORK(1); ; ++i) {
-      if (!token_get(str, pc->tb))  break;
+      if (!token_get())  break;
       
-      char *t = tokbuf_data(pc->tb);
-      unsigned n = tokbuf_len(pc->tb);
-
-      if (n == 2) {
-	if (t[0] == ']') {
+      if (tb->len == 2) {
+	if (tb->buf[0] == ']') {
 	  result = true;
 	  
 	  break;
 	}
 	
-	if (t[0] == ')' || t[0] =='}') {
+	if (tb->buf[0] == ')' || tb->buf[0] =='}') {
 	  break;
 	}
       }
       
-      if (!parse_token(&WORK(2), str, t, n))  break;
+      if (!parse_token(&WORK(2)))  break;
       
       if (i & 1) {
 	if (inst_of(WORK(2)) != consts.cl_str)  break;
@@ -365,8 +308,6 @@ parse_method_call(inst_t *dst, struct stream *str)
       p = &CDR(*p);
     }
 
-    parse_ctxt_fini(pc);
-  
     if (result)  method_call_new(dst, WORK(0), WORK(1));
   } FRAME_WORK_END;
 
@@ -374,37 +315,31 @@ parse_method_call(inst_t *dst, struct stream *str)
 }
 
 unsigned
-parse_block(inst_t *dst, struct stream *str)
+parse_block(inst_t *dst)
 {
   unsigned result = false;
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
 
   FRAME_WORK_BEGIN(3) {
-    struct parse_ctxt pc[1];
-
-    parse_ctxt_init(pc, str);
-    
     unsigned i;
     inst_t    *p;
 
     for (i = 0, p = &WORK(1); ; ++i) {
-      if (!token_get(str, pc->tb))  break;
+      if (!token_get())  break;
       
-      char *t = tokbuf_data(pc->tb);
-      unsigned n = tokbuf_len(pc->tb);
-      
-      if (n == 2){
-	if (t[0] == '}') {
+      if (tb->len == 2){
+	if (tb->buf[0] == '}') {
 	  result = true;
 	  
 	  break;
 	}
 	
-	if (t[0] == ')' || t[0] == ']') {
+	if (tb->buf[0] == ')' || tb->buf[0] == ']') {
 	  break;
 	}
       }
       
-      if (!parse_token(&WORK(2), str, t, n))  break;
+      if (!parse_token(&WORK(2)))  break;
       
       if (i == 0) {
 	if (!(WORK(2) == 0 || inst_of(WORK(2)) == consts.cl_list))  break;
@@ -418,8 +353,6 @@ parse_block(inst_t *dst, struct stream *str)
       p = &CDR(*p);
     }
     
-    parse_ctxt_fini(pc);
-    
     if (result)  block_new(dst, WORK(0), WORK(1));
   } FRAME_WORK_END;
 
@@ -427,16 +360,12 @@ parse_block(inst_t *dst, struct stream *str)
 }
 
 unsigned
-parse_dot(inst_t *dst, struct stream *str)
+parse_dot(inst_t *dst)
 {
   unsigned result;
 
   FRAME_WORK_BEGIN(1) {
-    struct parse_ctxt pc[1];
-    
-    parse_ctxt_init(pc, str);
-    
-    result = parse(&WORK(0), pc);
+    result = parse(&WORK(0));
     if (result) {
       list_new(&WORK(0), WORK(0), 0);
       method_call_new(&WORK(0), consts.str_quote, WORK(0));
@@ -447,29 +376,30 @@ parse_dot(inst_t *dst, struct stream *str)
       
       inst_assign(dst, WORK(0));
     }
-    
-    parse_ctxt_fini(pc);
   } FRAME_WORK_END;
 
   return (result);
 }
 
 unsigned
-parse_str(inst_t *dst, char *buf, unsigned len)
+parse_str(inst_t *dst)
 {
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  
   FRAME_WORK_BEGIN(2) {
-    unsigned i, n;
+    char     *p, *q;
+    unsigned i, n, k;
 
-    for (i = 0; len > 0; len -= n, buf += n, ++i) {
-      char *p = index(buf, '.');
-      if (p == 0) {
-	n = len;
+    for (i = 0, p = tb->buf, n = tb->len; n > 0; n -= k, p += k, ++i) {
+      q = index(p, '.');
+      if (q == 0) {
+	k = n;
       } else {
-	n = p + 1 - buf;
-	*p = 0;
+	k = q + 1 - p;
+	*q = 0;
       }
       
-      str_newc(&WORK(1), 1, n, buf);
+      str_newc(&WORK(1), 1, k, p);
       
       if (i == 0) {
 	inst_assign(&WORK(0), WORK(1));
@@ -490,35 +420,36 @@ parse_str(inst_t *dst, char *buf, unsigned len)
 }
 
 unsigned
-parse_token(inst_t *dst, struct stream *str, char *buf, unsigned len)
+parse_token(inst_t *dst)
 {
   unsigned result;
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
   char     *p;
   unsigned n, negf;
   
-  if (len == 2) {
-    switch (buf[0]) {
+  if (tb->len == 2) {
+    switch (tb->buf[0]) {
     case '\'':
-      return (parse_quote(dst, str));
+      return (parse_quote(dst));
 
     case '(':
-      return (parse_pair_or_list(dst, str));
+      return (parse_pair_or_list(dst));
 
     case '[':
-      return (parse_method_call(dst, str));
+      return (parse_method_call(dst));
 
     case '{':
-      return (parse_block(dst, str));
+      return (parse_block(dst));
 
     default:
       ;
     }
   }
 
-  if (len >= 2 && buf[0] == '`') {
+  if (tb->len >= 2 && tb->buf[0] == '`') {
     FRAME_WORK_BEGIN(1) {
-      buf[len - 2] = 0;
-      str_newc(&WORK(0), 1, len - 2, buf + 1);
+      tb->buf[tb->len - 2] = 0;
+      str_newc(&WORK(0), 1, tb->len - 2, tb->buf + 1);
       
       list_new(&WORK(0), WORK(0), 0);
       
@@ -530,8 +461,8 @@ parse_token(inst_t *dst, struct stream *str, char *buf, unsigned len)
     return (true);
   }
 
-  p = buf;
-  n = len;
+  p = tb->buf;
+  n = tb->len;
 
   negf = false;
   if (*p == '-') {
@@ -544,11 +475,11 @@ parse_token(inst_t *dst, struct stream *str, char *buf, unsigned len)
   for ( ; n > 1 && *p >= '0' && *p <= '9'; --n, ++p);
   
   if (n > 1) {
-    parse_str(dst, buf, len);
+    parse_str(dst);
   } else {
     intval_t val;
     
-    sscanf(buf, "%lld", &val);
+    sscanf(tb->buf, "%lld", &val);
 
     int_new(dst, val);
   }
@@ -556,32 +487,17 @@ parse_token(inst_t *dst, struct stream *str, char *buf, unsigned len)
   return (true);
 }
 
-
-void
-parse_ctxt_init(struct parse_ctxt *pc, struct stream *str)
-{
-  pc->str = str;
-
-  tokbuf_init(pc->tb);
-}
-
-void
-parse_ctxt_fini(struct parse_ctxt *pc)
-{
-  tokbuf_fini(pc->tb);
-}
-
 unsigned
-parse(inst_t *dst, struct parse_ctxt *pc)
+parse(inst_t *dst)
 {
   unsigned result;
 
-  result = token_get(pc->str, pc->tb);
+  result = token_get();
   
   if (result) {
-    if (tokbuf_len(pc->tb) == 0)  return (PARSE_EOF);
+    if (FRAME_INPUT_PC->tb->len == 0)  return (PARSE_EOF);
 
-    result = parse_token(dst, pc->str, tokbuf_data(pc->tb), tokbuf_len(pc->tb));
+    result = parse_token(dst);
   }
 
   return (result ? PARSE_OK : PARSE_ERR);

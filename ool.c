@@ -316,8 +316,10 @@ inst_init(inst_t inst, unsigned argc, ...)
 void inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv);
 
 void
-error(void)
+error(char *msg)
 {
+  fprintf(stderr, "%s", msg);
+
   abort();
 }
 
@@ -342,22 +344,12 @@ object_free(inst_t inst, inst_t cl)
 void
 cm_obj_new(void)
 {
-  if (CLASSVAL(MC_ARG(0))->init == 0) {
-    fprintf(stderr, "Cannot instantiate\n");
-    error();
-  }
-
   inst_alloc(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_newc(void)
 {
-  if (CLASSVAL(MC_ARG(0))->init == 0) {
-    fprintf(stderr, "Cannot instantiate\n");
-    error();
-  }
-
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), MC_ARG(0));
     inst_init(WORK(0), 1, MC_ARG(1));
@@ -718,7 +710,7 @@ method_call_new(inst_t *dst, inst_t sel, inst_t args)
 void
 cm_method_call_eval(void)
 {
-  inst_t sel = METHODCALL_SEL(MC_ARG(0)), args = METHODCALL_ARGS(MC_ARG(0));
+  inst_t sel = CAR(MC_ARG(0)), args = CDR(MC_ARG(0));
   bool   noevalf = STRVAL(sel)->size > 1 && STRVAL(sel)->data[0] == '&';
   unsigned nargs = list_len(args);
   
@@ -939,10 +931,7 @@ env_at(inst_t var)
 {						
   inst_t *p = env_find(var);
 
-  if (p == 0) {
-    fprintf(stderr, "Symbol not bound\n");
-    error();
-  }
+  if (p == 0)  error("Symbol not bound\n");
 
   return (*p);
 }
@@ -1016,10 +1005,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
   if (f == 0)                  f = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
 
   FRAME_METHOD_CALL_BEGIN(dst, found_cl, sel, argc, argv) {
-    if (f == 0) {
-      fprintf(stderr, "Method not found\n");
-      error();
-    }
+    if (f == 0)  error("Method not found\n");
 
     cl = inst_of(f);
     if (cl == consts.cl_code_method) {
@@ -1027,8 +1013,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
       goto done;
     }
     
-    fprintf(stderr, "Bad method\n");
-    error();
+    error("Bad method\n");
 
   done:
     ;
@@ -1229,10 +1214,8 @@ main(void)
     FRAME_WORK_BEGIN(1) {
       FRAME_INPUT_BEGIN(str->base) {
 	for (;;) {
-	  parse_ctxt_init(FRAME_INPUT_PC, FRAME_INPUT_STR);
-	  unsigned rc = parse(&WORK(0), FRAME_INPUT_PC);
+	  unsigned rc = parse(&WORK(0));
 	  if (rc == PARSE_EOF)  break;
-	  parse_ctxt_fini(FRAME_INPUT_PC);
 	  if (rc == PARSE_ERR) {
 	    fprintf(stderr, "Syntax error\n");
 	    continue;
