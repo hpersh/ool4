@@ -96,7 +96,7 @@ isspecial(unsigned c)
 void
 tokbuf_fini(struct tokbuf *tb)
 {
-  if (tb->bufsize > 0)  mem_free(tb->buf, tb->bufsize);
+  if (tb->bufsize > 0)  mem_gen_blk_free(tb->buf, tb->bufsize);
 }
 
 void
@@ -116,12 +116,12 @@ tokbuf_append_char(struct tokbuf *tb, char c)
   } else {
     if (tb->len >= tb->bufsize) {
       n = (tb->bufsize == 0 ? ARRAY_SIZE(tb->data) : tb->bufsize) << 1;
-      p = mem_alloc(n);
+      p = mem_gen_blk_alloc(n);
       if (tb->bufsize == 0) {
 	memcpy(p, tb->data, tb->len);
       } else {
 	memcpy(p, tb->buf, tb->len);
-	mem_free(tb->buf, tb->bufsize);
+	mem_gen_blk_free(tb->buf, tb->bufsize);
       }
       
       tb->bufsize = n;

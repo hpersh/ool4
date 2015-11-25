@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
+#include <sys/mman.h>
 #include <assert.h>
 
 #include "ool.h"
@@ -24,42 +25,171 @@ list_erase(struct list *item)
   q->prev = p;
 }
 
-struct {
-  unsigned long long mem_alloced, mem_freed, mem_in_use, mem_in_use_max;
-} stats[1];
+enum {
+  MEM_PAGE_SIZE = 4096
+};
 
-void *
-mem_alloc(unsigned size)
+struct mem_page {
+  struct list list_node[1];	/* Page linkage */
+  unsigned blk_size;
+  unsigned blks_in_use;
+};
+
+struct mem_blk {
+  struct mem_page *page;
+};
+
+struct mem_blk_free {
+  struct mem_blk base[1];
+  struct list    list_node[1];	/* Free block linkage */
+};
+
+struct list mem_pages[1];
+
+enum {
+  MIN_BLK_SIZE_LOG2 = 5,
+  MIN_BLK_SIZE      = 1 << MIN_BLK_SIZE_LOG2,
+  MAX_BLK_SIZE_LOG2 = 10,
+  MAX_BLK_SIZE      = 1 << MAX_BLK_SIZE_LOG2
+};
+
+struct list gen_blk_lists[MAX_BLK_SIZE_LOG2 + 1 - MIN_BLK_SIZE_LOG2];
+
+void
+mem_init(void)
 {
-  void *result = malloc(size);
-
-  assert(result != 0);
-
-  stats->mem_alloced += size;
-  if ((stats->mem_in_use += size) > stats->mem_in_use_max) {
-    stats->mem_in_use_max = stats->mem_in_use;
-  }
-
-  return (result);
-}
-
-void *
-mem_allocz(unsigned size)
-{
-  void *result = mem_alloc(size);
-
-  memset(result, 0, size);
-
-  return (result);
+  list_init(mem_pages);
+  
+  unsigned i;
+  for (i = 0; i < ARRAY_SIZE(gen_blk_lists); ++i)  list_init(&gen_blk_lists[i]);
 }
 
 void
-mem_free(void *p, unsigned size)
+mem_page_alloc(unsigned blk_size, struct list *free_blk_list)
 {
-  free(p);
+  struct mem_page *page = mmap((void *) 0, MEM_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 
-  stats->mem_freed += size;
-  stats->mem_in_use -= size;
+  assert(page != 0);
+
+  list_insert(page->list_node, list_end(mem_pages));
+  page->blk_size    = blk_size;
+  page->blks_in_use = 0;
+
+  unsigned char *p;
+  unsigned      n, b = sizeof(struct mem_blk) + blk_size;
+
+  for (p = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, p += b) {
+    ((struct mem_blk_free *) p)->base->page = page;
+    list_insert(((struct mem_blk_free *) p)->list_node, list_end(free_blk_list));
+  }
+}
+
+void
+mem_page_free(struct mem_page *page)
+{
+  unsigned char *p;
+  unsigned      n, b = sizeof(struct mem_blk) + page->blk_size;
+
+  for (p = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, p += b) {
+    list_erase(((struct mem_blk_free *) p)->list_node);
+  }
+
+  munmap(page, MEM_PAGE_SIZE);
+}
+
+void *
+mem_blk_alloc(unsigned blk_size, struct list *free_blk_list)
+{
+  if (list_empty(free_blk_list))  mem_page_alloc(blk_size, free_blk_list);
+
+  struct list *p = list_first(free_blk_list);
+  list_erase(p);
+
+  ++FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node)->base->page->blks_in_use;
+
+  return (p);
+}
+
+unsigned
+round_up_to_power_of_2(unsigned n)
+{
+  unsigned result = n, k;
+
+  for (;;) {
+    k = n & (n - 1);
+    if (k == 0)  return (result);
+    result = (n = k) << 1;
+  }
+}
+
+unsigned
+ilog2(unsigned i)
+{
+  assert(i != 0);
+
+  unsigned result;
+
+  for (result = 0; i > 1; i >>= 1, ++result);
+
+  return (result);
+}
+
+unsigned
+page_size_align(unsigned size)
+{
+  size = round_up_to_power_of_2(size);
+  if (size < MEM_PAGE_SIZE)  size = MEM_PAGE_SIZE;
+
+  return (size);
+}
+
+unsigned
+blk_size_align(unsigned size)
+{
+  size = round_up_to_power_of_2(size);
+  if (size < MIN_BLK_SIZE)  size = MIN_BLK_SIZE;
+
+  return (size);
+}
+
+void *
+mem_gen_blk_alloc(unsigned size)
+{
+  if (size > MAX_BLK_SIZE) {
+    void *p = mmap(0, page_size_align(size), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+
+    assert(p != 0);
+
+    return (p);
+  }
+
+  size = blk_size_align(size);
+  
+  return (mem_blk_alloc(size, &gen_blk_lists[ilog2(size) - MIN_BLK_SIZE_LOG2]));
+}
+
+void
+mem_blk_free(void *p, struct list *free_blk_list)
+{
+  struct mem_blk_free *q = FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node);
+
+  list_insert(q->list_node, list_end(free_blk_list));
+
+  struct mem_page *page = q->base->page;
+
+  if (--page->blks_in_use == 0)  mem_page_free(page);
+}
+
+void
+mem_gen_blk_free(void *p, unsigned size)
+{
+  if (size > MAX_BLK_SIZE) {
+    munmap(p, page_size_align(size));
+
+    return;
+  }
+
+  mem_blk_free(p, &gen_blk_lists[ilog2(blk_size_align(size)) - MIN_BLK_SIZE_LOG2]);
 }
 
 void
@@ -137,20 +267,11 @@ cl_inst_cache(inst_t cl)
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
-  inst_t inst;
-  struct list *inst_cache = cl_inst_cache(cl);
+  inst_t inst = (inst_t) mem_blk_alloc(CLASSVAL(cl)->inst_size, cl_inst_cache(cl));
 
-  if (list_empty(inst_cache)) {
-    inst = (inst_t) mem_allocz(CLASSVAL(cl)->inst_size);
-  } else {
-    struct list *p = list_first(inst_cache);
-    list_erase(p);
-
-    inst = CONTAINER_OF(p, struct inst, list_node);
-    memset(inst, 0, CLASSVAL(cl)->inst_size);
-  }
-
-  inst_assign(&inst->inst_of, cl);
+  inst->ref_cnt = 0;
+  inst->inst_of = inst_retain(cl);
+  
   inst_assign(dst, inst);
 }
 
@@ -215,7 +336,7 @@ object_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 object_free(inst_t inst, inst_t cl)
 {
-  list_insert(inst->list_node, list_end(cl_inst_cache(inst_of(inst))));
+  mem_blk_free(inst, cl_inst_cache(inst_of(inst)));
 }
 
 void
@@ -254,6 +375,19 @@ void
 cm_obj_eval(void)
 {
   inst_assign(MC_RESULT, MC_ARG(0));
+}
+
+void
+cm_obj_while(void)
+{
+  FRAME_WORK_BEGIN(2) {
+    for (;;) {
+      inst_method_call(&WORK(0), consts.str_eval, 1, &MC_ARG(0));
+      if (inst_of(WORK(0)) != consts.cl_bool || !BOOLVAL(WORK(0)))  break;
+      inst_method_call(&WORK(1), consts.str_eval, 1, &MC_ARG(1));
+    }
+    inst_assign(MC_RESULT, WORK(1));
+  } FRAME_WORK_END;
 }
 
 void
@@ -334,6 +468,12 @@ cm_int_add(void)
 }
 
 void
+cm_int_lt(void)
+{
+  bool_new(MC_RESULT, INTVAL(MC_ARG(0)) < INTVAL(MC_ARG(1)));
+}
+
+void
 cm_int_tostring(void)
 {
   char buf[32];
@@ -369,7 +509,7 @@ str_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 void
 str_free(inst_t inst, inst_t cl)
 {
-  mem_free(STRVAL(inst)->data, STRVAL(inst)->size);
+  mem_gen_blk_free(STRVAL(inst)->data, STRVAL(inst)->size);
   inst_free_parent(inst, cl);
 }
 
@@ -393,7 +533,7 @@ str_newc(inst_t *dst, unsigned argc, ...)
     va_end(ap);
     
     inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len);
+    STRVAL(WORK(0))->data = s = (char *) mem_gen_blk_alloc(STRVAL(WORK(0))->size = len);
 
     va_start(ap, argc);
 
@@ -424,7 +564,7 @@ str_newv(inst_t *dst, unsigned n, inst_t *data)
     ++len;
     
     inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len);
+    STRVAL(WORK(0))->data = s = (char *) mem_gen_blk_alloc(STRVAL(WORK(0))->size = len);
 
     for (p = data, k = n; k > 0; --k, ++p) {
       len = STRVAL(*p)->size - 1;
@@ -582,17 +722,17 @@ cm_method_call_eval(void)
   bool   noevalf = STRVAL(sel)->size > 1 && STRVAL(sel)->data[0] == '&';
   unsigned nargs = list_len(args);
   
-  FRAME_WORK_BEGIN(1) {
-    array_new(&WORK(0), nargs);
-    inst_t *p;
-    for (p = ARRAYVAL(WORK(0))->data; nargs > 0; --nargs, ++p, args = CDR(args)) {
+  FRAME_WORK_BEGIN(nargs) {
+    inst_t   *p;
+    unsigned n;
+    for (p = &WORK(0), n = nargs; n > 0; --n, ++p, args = CDR(args)) {
       if (noevalf) {
 	inst_assign(p, CAR(args));
 	continue;
       }
       inst_method_call(p, consts.str_eval, 1, &CAR(args));
     }
-    inst_method_call(MC_RESULT, sel, ARRAYVAL(WORK(0))->size, ARRAYVAL(WORK(0))->data);
+    inst_method_call(MC_RESULT, sel, nargs, &WORK(0));
   } FRAME_WORK_END;
 }
 
@@ -650,11 +790,12 @@ array_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc > 0);
 
-  unsigned size = va_arg(ap, unsigned);
+  unsigned size = va_arg(ap, unsigned), s;
   --argc;
 
   ARRAYVAL(inst)->size = size;
-  ARRAYVAL(inst)->data = mem_allocz(size * sizeof(ARRAYVAL(inst)->data[0]));
+  ARRAYVAL(inst)->data = mem_gen_blk_alloc(s = size * sizeof(ARRAYVAL(inst)->data[0]));
+  memset(ARRAYVAL(inst)->data, 0, s);
 
   inst_init_parent(inst, cl, argc, ap);
 }
@@ -675,7 +816,7 @@ array_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 array_free(inst_t inst, inst_t cl)
 {
-  mem_free(ARRAYVAL(inst)->data, ARRAYVAL(inst)->size * sizeof(ARRAYVAL(inst)->data[0]));
+  mem_gen_blk_free(ARRAYVAL(inst)->data, ARRAYVAL(inst)->size * sizeof(ARRAYVAL(inst)->data[0]));
 
   inst_free_parent(inst, cl);
 }
@@ -696,18 +837,6 @@ dict_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
   --argc;
 
   inst_init_parent(inst, cl, argc, ap);
-}
-
-unsigned
-round_up_to_power_of_2(unsigned n)
-{
-  unsigned result = n, k;
-
-  for (;;) {
-    k = n & (n - 1);
-    if (k == 0)  return (result);
-    result = (n = k) << 1;
-  }
 }
 
 void
@@ -952,6 +1081,7 @@ struct {
   { &consts.str_false,       "#false" },
   { &consts.str_integer,     "#Integer" },
   { &consts.str_list,        "#List" },
+  { &consts.str_ltc,         "lt:" },
   { &consts.str_main,        "#main" },
   { &consts.str_metaclass,   "#Metaclass" },
   { &consts.str_method_call, "#Method_Call" },
@@ -964,7 +1094,8 @@ struct {
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
   { &consts.str_tostring,    "tostring" },
-  { &consts.str_true,        "#true" }
+  { &consts.str_true,        "#true" },
+  { &consts.str_whilec,      "&while:" }
 };
 
 struct {
@@ -975,11 +1106,13 @@ struct {
 } init_method_tbl[] = {
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_quote,    cm_obj_quote },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_whilec,   cm_obj_while },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_obj_tostring },
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc, cm_bool_and },
 
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_addc,     cm_int_add },
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_ltc,      cm_int_lt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
@@ -999,10 +1132,12 @@ struct {
 void
 init(void)
 {
+  mem_init();
+
   FRAME_WORK_BEGIN(1) {
     /* Pass 1 - Create metaclass */
 
-    consts.metaclass = (inst_t) mem_allocz(sizeof(struct inst_metaclass));
+    consts.metaclass = (inst_t) mem_gen_blk_alloc(sizeof(struct inst_metaclass));
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
     list_init(CLASSVAL(consts.metaclass)->_inst_cache);
     CLASSVAL(consts.metaclass)->inst_cache = CLASSVAL(consts.metaclass)->_inst_cache;
@@ -1072,11 +1207,13 @@ init(void)
 void
 stats_dump(void)
 {
+#if 0
   printf("Memory:\n");
   printf("  Alloced: \t%llu\n", stats->mem_alloced);
   printf("  Freed: \t%llu\n", stats->mem_freed);
   printf("  In use: \t%llu\n", stats->mem_in_use);
   printf("  In use (max): \t%llu\n", stats->mem_in_use_max);
+#endif
 }
 
 int

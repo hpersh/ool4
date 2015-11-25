@@ -6,7 +6,7 @@
 
 #define PTR_TO_UINT(x)  ((unsigned long long)(x))
 #define FIELD_OFS(s, f)  PTR_TO_UINT(&((s *) 0)->f)
-#define CONTAINER_OF(p, s, f)  ((s *)((char *)(p) - FIELD_OFS(s, f)))
+#define FIELD_PTR_TO_STRUCT_PTR(p, s, f)  ((s *)((char *)(p) - FIELD_OFS(s, f)))
 
 enum {
   false = 0, true
@@ -62,15 +62,15 @@ list_next(struct list *item)
 struct list *list_insert(struct list *item, struct list *before);
 void        list_erase(struct list *item);
 
-void *mem_alloc(unsigned size);
-void *mem_allocz(unsigned size);
-void mem_free(void *p, unsigned size);
+void * mem_blk_alloc(unsigned blk_size, struct list *free_blk_list);
+void * mem_gen_blk_alloc(unsigned size);
+void mem_blk_free(void *p, struct list *free_blk_list);
+void mem_gen_blk_free(void *p, unsigned size);
 
 struct inst;
 typedef struct inst *inst_t;
 
 struct inst {
-  struct list list_node[1];
   unsigned    ref_cnt;
   inst_t      inst_of;
 };
@@ -212,6 +212,7 @@ struct {
   inst_t str_hash;
   inst_t str_integer; 
   inst_t str_list;
+  inst_t str_ltc;
   inst_t str_main;
   inst_t str_metaclass;
   inst_t str_method_call;
@@ -225,6 +226,7 @@ struct {
   inst_t str_system;
   inst_t str_tostring;
   inst_t str_true;
+  inst_t str_whilec;
 } consts;
 
 inst_t inst_retain(inst_t inst);
@@ -233,7 +235,7 @@ void   inst_release(inst_t inst);
 static inline void
 inst_assign(inst_t *dst, inst_t src)
 {
-  inst_t temp = inst_retain(*dst);
+  inst_t temp = *dst;
 
   *dst = inst_retain(src);
   inst_release(temp);
