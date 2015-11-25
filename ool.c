@@ -71,10 +71,34 @@ mem_init(void)
   for (i = 0; i < ARRAY_SIZE(gen_blk_lists); ++i)  list_init(&gen_blk_lists[i]);
 }
 
-void
-mem_page_alloc(unsigned blk_size, struct list *free_blk_list)
+void *
+mem_pages_alloc(unsigned npages)
 {
-  struct mem_page *page = mmap((void *) 0, MEM_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+  void *p = mmap((void *) 0, npages * MEM_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+  
+  assert(p != 0);
+
+  stats->mem->pages_alloced += npages;
+  if ((stats->mem->pages_in_use += npages) > stats->mem->pages_in_use_max) {
+    stats->mem->pages_in_use_max = stats->mem->pages_in_use;
+  }
+
+  return (p);
+}
+
+void
+mem_pages_free(void *p, unsigned npages)
+{
+  munmap(p, npages * MEM_PAGE_SIZE);
+
+  stats->mem->pages_freed += npages;
+  stats->mem->pages_in_use -= npages;
+}
+
+void
+mem_blk_page_alloc(unsigned blk_size, struct list *free_blk_list)
+{
+  struct mem_page *page = mem_pages_alloc(1);
 
   assert(page != 0);
 
@@ -89,15 +113,10 @@ mem_page_alloc(unsigned blk_size, struct list *free_blk_list)
     ((struct mem_blk_free *) p)->base->page = page;
     list_insert(((struct mem_blk_free *) p)->list_node, list_end(free_blk_list));
   }
-
-  ++stats->mem->pages_alloced;
-  if (++stats->mem->pages_in_use > stats->mem->pages_in_use_max) {
-    stats->mem->pages_in_use_max = stats->mem->pages_in_use;
-  }
 }
 
 void
-mem_page_free(struct mem_page *page)
+mem_blk_page_free(struct mem_page *page)
 {
   unsigned char *p;
   unsigned      n, b = sizeof(struct mem_blk) + page->blk_size;
@@ -108,16 +127,13 @@ mem_page_free(struct mem_page *page)
 
   list_erase(page->list_node);
 
-  munmap(page, MEM_PAGE_SIZE);
-
-  ++stats->mem->pages_freed;
-  --stats->mem->pages_in_use;
+  mem_pages_free(page, 1);
 }
 
 void *
 mem_blk_alloc(unsigned blk_size, struct list *free_blk_list)
 {
-  if (list_empty(free_blk_list))  mem_page_alloc(blk_size, free_blk_list);
+  if (list_empty(free_blk_list))  mem_blk_page_alloc(blk_size, free_blk_list);
 
   struct list *p = list_first(free_blk_list);
   list_erase(p);
@@ -154,26 +170,20 @@ ilog2(unsigned i)
 unsigned
 page_size_align(unsigned size)
 {
-  size = round_up_to_power_of_2(size);
-  if (size < MEM_PAGE_SIZE)  size = MEM_PAGE_SIZE;
-
-  return (size);
+  return (((size - 1) / MEM_PAGE_SIZE) + 1);
 }
 
 unsigned
 blk_size_align(unsigned size)
 {
-  size = round_up_to_power_of_2(size);
-  if (size < MIN_BLK_SIZE)  size = MIN_BLK_SIZE;
-
-  return (size);
+  return (size < MIN_BLK_SIZE ? MIN_BLK_SIZE : round_up_to_power_of_2(size));
 }
 
 void *
 mem_gen_blk_alloc(unsigned size)
 {
   if (size > MAX_BLK_SIZE) {
-    void *p = mmap(0, page_size_align(size), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    void *p = mem_pages_alloc(page_size_align(size));
 
     assert(p != 0);
 
@@ -194,14 +204,14 @@ mem_blk_free(void *p, struct list *free_blk_list)
 
   struct mem_page *page = q->base->page;
 
-  if (--page->blks_in_use == 0)  mem_page_free(page);
+  if (--page->blks_in_use == 0)  mem_blk_page_free(page);
 }
 
 void
 mem_gen_blk_free(void *p, unsigned size)
 {
   if (size > MAX_BLK_SIZE) {
-    munmap(p, page_size_align(size));
+    mem_pages_free(p, page_size_align(size));
 
     return;
   }
