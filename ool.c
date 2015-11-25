@@ -55,6 +55,13 @@ enum {
 
 struct list gen_blk_lists[MAX_BLK_SIZE_LOG2 + 1 - MIN_BLK_SIZE_LOG2];
 
+struct {
+  struct {
+    unsigned long long pages_alloced, pages_freed;
+    unsigned long long pages_in_use, pages_in_use_max;
+  } mem[1];
+} stats[1];
+
 void
 mem_init(void)
 {
@@ -82,6 +89,11 @@ mem_page_alloc(unsigned blk_size, struct list *free_blk_list)
     ((struct mem_blk_free *) p)->base->page = page;
     list_insert(((struct mem_blk_free *) p)->list_node, list_end(free_blk_list));
   }
+
+  ++stats->mem->pages_alloced;
+  if (++stats->mem->pages_in_use > stats->mem->pages_in_use_max) {
+    stats->mem->pages_in_use_max = stats->mem->pages_in_use;
+  }
 }
 
 void
@@ -94,7 +106,12 @@ mem_page_free(struct mem_page *page)
     list_erase(((struct mem_blk_free *) p)->list_node);
   }
 
+  list_erase(page->list_node);
+
   munmap(page, MEM_PAGE_SIZE);
+
+  ++stats->mem->pages_freed;
+  --stats->mem->pages_in_use;
 }
 
 void *
@@ -173,7 +190,7 @@ mem_blk_free(void *p, struct list *free_blk_list)
 {
   struct mem_blk_free *q = FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node);
 
-  list_insert(q->list_node, list_end(free_blk_list));
+  list_insert(q->list_node, list_first(free_blk_list));
 
   struct mem_page *page = q->base->page;
 
@@ -1192,13 +1209,11 @@ init(void)
 void
 stats_dump(void)
 {
-#if 0
-  printf("Memory:\n");
-  printf("  Alloced: \t%llu\n", stats->mem_alloced);
-  printf("  Freed: \t%llu\n", stats->mem_freed);
-  printf("  In use: \t%llu\n", stats->mem_in_use);
-  printf("  In use (max): \t%llu\n", stats->mem_in_use_max);
-#endif
+  printf("Memory pages:\n");
+  printf("  Alloced: \t%llu\n", stats->mem->pages_alloced);
+  printf("  Freed: \t%llu\n", stats->mem->pages_freed);
+  printf("  In use: \t%llu\n", stats->mem->pages_in_use);
+  printf("  In use (max): \t%llu\n", stats->mem->pages_in_use_max);
 }
 
 int
