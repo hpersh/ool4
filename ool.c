@@ -607,8 +607,8 @@ dptr_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc > 1);
 
-  inst_assign(&CAR(inst), va_arg(ap, inst_t));
-  inst_assign(&CDR(inst), va_arg(ap, inst_t));
+  CAR(inst) = inst_retain(va_arg(ap, inst_t));
+  CDR(inst) = inst_retain(va_arg(ap, inst_t));
   argc -= 2;
 
   inst_init_parent(inst, cl, argc, ap);

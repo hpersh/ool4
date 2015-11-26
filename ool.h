@@ -292,7 +292,7 @@ struct tokbuf {
 static inline void
 tokbuf_init(struct tokbuf *tb)
 {
-  tb->buf = (char *) mem_alloc(tb->bufsize = 32);
+  tb->buf = (char *) mem_alloc(tb->bufsize = 16);
   tb->len = 0;
 }
 

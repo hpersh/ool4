@@ -60,16 +60,12 @@ struct stream_funcs stream_funcs_file[] = {
   }
 };
 
-
 void
 stream_file_init(struct stream_file *str, FILE *fp)
 {
   str->base->funcs = stream_funcs_file;
   str->fp          = fp;
 }
-
-
-
 
 unsigned 
 isspecial(unsigned c)
