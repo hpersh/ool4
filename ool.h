@@ -63,10 +63,8 @@ list_next(struct list *item)
 struct list *list_insert(struct list *item, struct list *before);
 void        list_erase(struct list *item);
 
-void * mem_blk_alloc(unsigned blk_size, struct list *free_blk_list);
-void * mem_gen_blk_alloc(unsigned size);
-void mem_blk_free(void *p, struct list *free_blk_list);
-void mem_gen_blk_free(void *p, unsigned size);
+void *mem_alloc(unsigned size);
+void mem_free(void *p, unsigned size);
 
 struct inst;
 typedef struct inst *inst_t;
@@ -172,7 +170,6 @@ struct inst_metaclass {
     void (*init)(inst_t inst, inst_t cl, unsigned argc, va_list ap);
     void (*walk)(inst_t inst, inst_t cl, void (*func)(inst_t));
     void (*free)(inst_t inst, inst_t cl);
-    struct list _inst_cache[1], *inst_cache;
   } val[1];
 };
 #define CLASSVAL(x)  (((struct inst_metaclass *)(x))->val)
@@ -295,14 +292,14 @@ struct tokbuf {
 static inline void
 tokbuf_init(struct tokbuf *tb)
 {
-  tb->buf = (char *) mem_gen_blk_alloc(tb->bufsize = 32);
+  tb->buf = (char *) mem_alloc(tb->bufsize = 32);
   tb->len = 0;
 }
 
 static inline void
 tokbuf_fini(struct tokbuf *tb)
 {
-  if (tb->buf != 0)  mem_gen_blk_free(tb->buf, tb->bufsize);
+  if (tb->buf != 0)  mem_free(tb->buf, tb->bufsize);
 }
 
 struct parse_ctxt {

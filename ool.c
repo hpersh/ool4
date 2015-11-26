@@ -26,13 +26,17 @@ list_erase(struct list *item)
 }
 
 enum {
-  MEM_PAGE_SIZE = 4096
+  MEM_PAGE_SIZE_LOG2 = 12,
+  MEM_PAGE_SIZE      = 1 << MEM_PAGE_SIZE_LOG2,
+  MIN_BLK_SIZE_LOG2  = 4,
+  MIN_BLK_SIZE       = 1 << MIN_BLK_SIZE_LOG2,
+  MAX_BLK_SIZE_LOG2  = 10,
+  MAX_BLK_SIZE       = 1 << MAX_BLK_SIZE_LOG2
 };
 
 struct mem_page {
   struct list list_node[1];	/* Page linkage */
-  unsigned blk_size;
-  unsigned blks_in_use;
+  unsigned    blks_in_use;
 };
 
 struct mem_blk {
@@ -46,14 +50,7 @@ struct mem_blk_free {
 
 struct list mem_pages[1];
 
-enum {
-  MIN_BLK_SIZE_LOG2 = 5,
-  MIN_BLK_SIZE      = 1 << MIN_BLK_SIZE_LOG2,
-  MAX_BLK_SIZE_LOG2 = 10,
-  MAX_BLK_SIZE      = 1 << MAX_BLK_SIZE_LOG2
-};
-
-struct list gen_blk_lists[MAX_BLK_SIZE_LOG2 + 1 - MIN_BLK_SIZE_LOG2];
+struct list mem_blk_lists[MAX_BLK_SIZE_LOG2 + 1 - MIN_BLK_SIZE_LOG2];
 
 struct {
   struct {
@@ -61,87 +58,6 @@ struct {
     unsigned long long pages_in_use, pages_in_use_max;
   } mem[1];
 } stats[1];
-
-void
-mem_init(void)
-{
-  list_init(mem_pages);
-  
-  unsigned i;
-  for (i = 0; i < ARRAY_SIZE(gen_blk_lists); ++i)  list_init(&gen_blk_lists[i]);
-}
-
-void *
-mem_pages_alloc(unsigned npages)
-{
-  void *p = mmap((void *) 0, npages * MEM_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-  
-  assert(p != 0);
-
-  stats->mem->pages_alloced += npages;
-  if ((stats->mem->pages_in_use += npages) > stats->mem->pages_in_use_max) {
-    stats->mem->pages_in_use_max = stats->mem->pages_in_use;
-  }
-
-  return (p);
-}
-
-void
-mem_pages_free(void *p, unsigned npages)
-{
-  munmap(p, npages * MEM_PAGE_SIZE);
-
-  stats->mem->pages_freed += npages;
-  stats->mem->pages_in_use -= npages;
-}
-
-void
-mem_blk_page_alloc(unsigned blk_size, struct list *free_blk_list)
-{
-  struct mem_page *page = mem_pages_alloc(1);
-
-  assert(page != 0);
-
-  list_insert(page->list_node, list_end(mem_pages));
-  page->blk_size    = blk_size;
-  page->blks_in_use = 0;
-
-  unsigned char *p;
-  unsigned      n, b = sizeof(struct mem_blk) + blk_size;
-
-  for (p = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, p += b) {
-    ((struct mem_blk_free *) p)->base->page = page;
-    list_insert(((struct mem_blk_free *) p)->list_node, list_end(free_blk_list));
-  }
-}
-
-void
-mem_blk_page_free(struct mem_page *page)
-{
-  unsigned char *p;
-  unsigned      n, b = sizeof(struct mem_blk) + page->blk_size;
-
-  for (p = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, p += b) {
-    list_erase(((struct mem_blk_free *) p)->list_node);
-  }
-
-  list_erase(page->list_node);
-
-  mem_pages_free(page, 1);
-}
-
-void *
-mem_blk_alloc(unsigned blk_size, struct list *free_blk_list)
-{
-  if (list_empty(free_blk_list))  mem_blk_page_alloc(blk_size, free_blk_list);
-
-  struct list *p = list_first(free_blk_list);
-  list_erase(p);
-
-  ++FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node)->base->page->blks_in_use;
-
-  return (p);
-}
 
 unsigned
 round_up_to_power_of_2(unsigned n)
@@ -179,8 +95,41 @@ blk_size_align(unsigned size)
   return (size < MIN_BLK_SIZE ? MIN_BLK_SIZE : round_up_to_power_of_2(size));
 }
 
+void
+mem_init(void)
+{
+  list_init(mem_pages);
+  
+  unsigned i;
+  for (i = 0; i < ARRAY_SIZE(mem_blk_lists); ++i)  list_init(&mem_blk_lists[i]);
+}
+
 void *
-mem_gen_blk_alloc(unsigned size)
+mem_pages_alloc(unsigned npages)
+{
+  void *p = mmap((void *) 0, npages << MEM_PAGE_SIZE_LOG2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+  
+  assert(p != 0);
+
+  stats->mem->pages_alloced += npages;
+  if ((stats->mem->pages_in_use += npages) > stats->mem->pages_in_use_max) {
+    stats->mem->pages_in_use_max = stats->mem->pages_in_use;
+  }
+
+  return (p);
+}
+
+void
+mem_pages_free(void *p, unsigned npages)
+{
+  munmap(p, npages << MEM_PAGE_SIZE_LOG2);
+
+  stats->mem->pages_freed += npages;
+  stats->mem->pages_in_use -= npages;
+}
+
+void *
+mem_alloc(unsigned size)
 {
   if (size > MAX_BLK_SIZE) {
     void *p = mem_pages_alloc(page_size_align(size));
@@ -191,24 +140,35 @@ mem_gen_blk_alloc(unsigned size)
   }
 
   size = blk_size_align(size);
-  
-  return (mem_blk_alloc(size, &gen_blk_lists[ilog2(size) - MIN_BLK_SIZE_LOG2]));
+  struct list *li = &mem_blk_lists[ilog2(size) - MIN_BLK_SIZE_LOG2];
+
+  if (list_empty(li)) {
+    struct mem_page *page = mem_pages_alloc(1);
+
+    assert(page != 0);
+    
+    list_insert(page->list_node, list_end(mem_pages));
+    page->blks_in_use = 0;
+    
+    unsigned char *r;
+    unsigned      n, b = sizeof(struct mem_blk) + size;
+
+    for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, r += b) {
+      ((struct mem_blk_free *) r)->base->page = page;
+      list_insert(((struct mem_blk_free *) r)->list_node, list_first(li));
+    }
+  }
+
+  struct list *p = list_first(li);
+  list_erase(p);
+
+  ++FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node)->base->page->blks_in_use;
+
+  return (p);
 }
 
 void
-mem_blk_free(void *p, struct list *free_blk_list)
-{
-  struct mem_blk_free *q = FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node);
-
-  list_insert(q->list_node, list_first(free_blk_list));
-
-  struct mem_page *page = q->base->page;
-
-  if (--page->blks_in_use == 0)  mem_blk_page_free(page);
-}
-
-void
-mem_gen_blk_free(void *p, unsigned size)
+mem_free(void *p, unsigned size)
 {
   if (size > MAX_BLK_SIZE) {
     mem_pages_free(p, page_size_align(size));
@@ -216,7 +176,26 @@ mem_gen_blk_free(void *p, unsigned size)
     return;
   }
 
-  mem_blk_free(p, &gen_blk_lists[ilog2(blk_size_align(size)) - MIN_BLK_SIZE_LOG2]);
+  size = blk_size_align(size);
+  struct mem_blk_free *q = FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node);
+  struct list *li = &mem_blk_lists[ilog2(size) - MIN_BLK_SIZE_LOG2];
+
+  list_insert(q->list_node, list_first(li));
+
+  struct mem_page *page = q->base->page;
+
+  if (--page->blks_in_use > 0)  return;
+
+  unsigned char *r;
+  unsigned      n, b = sizeof(struct mem_blk) + size;
+
+  for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, r += b) {
+    list_erase(((struct mem_blk_free *) r)->list_node);
+  }
+
+  list_erase(page->list_node);
+
+  mem_pages_free(page, 1);
 }
 
 void
@@ -277,24 +256,10 @@ frame_jmp(struct frame_jmp *fr, int code)
   longjmp(fr->jmp_buf, code);
 }
 
-struct list *
-cl_inst_cache(inst_t cl)
-{
-  unsigned inst_size = CLASSVAL(cl)->inst_size;
-  inst_t p;
-
-  for (p = cl; cl != 0; cl = CLASSVAL(cl)->parent) {
-    if (CLASSVAL(cl)->inst_size != inst_size)  break;
-    p = cl;
-  }
-
-  return (CLASSVAL(p)->inst_cache);
-}
-
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
-  inst_t inst = (inst_t) mem_blk_alloc(CLASSVAL(cl)->inst_size, cl_inst_cache(cl));
+  inst_t inst = (inst_t) mem_alloc(CLASSVAL(cl)->inst_size);
 
   inst->ref_cnt = 0;
   inst->inst_of = inst_retain(cl);
@@ -371,7 +336,7 @@ object_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 object_free(inst_t inst, inst_t cl)
 {
-  mem_blk_free(inst, cl_inst_cache(inst_of(inst)));
+  mem_free(inst, CLASSVAL(inst_of(inst))->inst_size);
 }
 
 void
@@ -534,7 +499,7 @@ str_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 void
 str_free(inst_t inst, inst_t cl)
 {
-  mem_gen_blk_free(STRVAL(inst)->data, STRVAL(inst)->size);
+  mem_free(STRVAL(inst)->data, STRVAL(inst)->size);
   inst_free_parent(inst, cl);
 }
 
@@ -558,7 +523,7 @@ str_newc(inst_t *dst, unsigned argc, ...)
     va_end(ap);
     
     inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_gen_blk_alloc(STRVAL(WORK(0))->size = len);
+    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len);
 
     va_start(ap, argc);
 
@@ -589,7 +554,7 @@ str_newv(inst_t *dst, unsigned n, inst_t *data)
     ++len;
     
     inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_gen_blk_alloc(STRVAL(WORK(0))->size = len);
+    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len);
 
     for (p = data, k = n; k > 0; --k, ++p) {
       len = STRVAL(*p)->size - 1;
@@ -819,7 +784,7 @@ array_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
   --argc;
 
   ARRAYVAL(inst)->size = size;
-  ARRAYVAL(inst)->data = mem_gen_blk_alloc(s = size * sizeof(ARRAYVAL(inst)->data[0]));
+  ARRAYVAL(inst)->data = mem_alloc(s = size * sizeof(ARRAYVAL(inst)->data[0]));
   memset(ARRAYVAL(inst)->data, 0, s);
 
   inst_init_parent(inst, cl, argc, ap);
@@ -841,7 +806,7 @@ array_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 array_free(inst_t inst, inst_t cl)
 {
-  mem_gen_blk_free(ARRAYVAL(inst)->data, ARRAYVAL(inst)->size * sizeof(ARRAYVAL(inst)->data[0]));
+  mem_free(ARRAYVAL(inst)->data, ARRAYVAL(inst)->size * sizeof(ARRAYVAL(inst)->data[0]));
 
   inst_free_parent(inst, cl);
 }
@@ -1161,10 +1126,8 @@ init(void)
   FRAME_WORK_BEGIN(1) {
     /* Pass 1 - Create metaclass */
 
-    consts.metaclass = (inst_t) mem_gen_blk_alloc(sizeof(struct inst_metaclass));
+    consts.metaclass = (inst_t) mem_alloc(sizeof(struct inst_metaclass));
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
-    list_init(CLASSVAL(consts.metaclass)->_inst_cache);
-    CLASSVAL(consts.metaclass)->inst_cache = CLASSVAL(consts.metaclass)->_inst_cache;
 
     /* Pass 2 - Create classes */
 
@@ -1179,8 +1142,6 @@ init(void)
       CLASSVAL(*init_cl_tbl[i].cl)->init      = init_cl_tbl[i].init;
       CLASSVAL(*init_cl_tbl[i].cl)->walk      = init_cl_tbl[i].walk;
       CLASSVAL(*init_cl_tbl[i].cl)->free      = init_cl_tbl[i].free;
-      list_init(CLASSVAL(*init_cl_tbl[i].cl)->_inst_cache);
-      CLASSVAL(*init_cl_tbl[i].cl)->inst_cache = CLASSVAL(*init_cl_tbl[i].cl)->_inst_cache;
     }
 
     /* Pass 3 - Create strings */
