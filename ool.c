@@ -242,8 +242,8 @@ frame_jmp(struct frame_jmp *fr, int code)
     case FRAME_TYPE_MODULE:
       frame_module_pop();
       break;
-    case FRAME_TYPE_RESTART:
-      frame_restart_pop();
+    case FRAME_TYPE_ERROR:
+      frame_error_pop();
       break;
     case FRAME_TYPE_INPUT:
       frame_input_pop();
@@ -344,7 +344,7 @@ error(char *msg)
 
   backtrace();
 
-  abort();
+  frame_jmp(errfp->base, 1);
 }
 
 void
@@ -1251,17 +1251,19 @@ main(void)
   FRAME_MODULE_BEGIN(consts.module_main) {
     FRAME_WORK_BEGIN(1) {
       FRAME_INPUT_BEGIN(str->base) {
-	for (;;) {
-	  unsigned rc = parse(&WORK(0));
-	  if (rc == PARSE_EOF)  break;
-	  if (rc == PARSE_ERR) {
-	    fprintf(stderr, "Syntax error\n");
-	    continue;
+	FRAME_ERROR_BEGIN {
+	  for (;;) {
+	    unsigned rc = parse(&WORK(0));
+	    if (rc == PARSE_EOF)  break;
+	    if (rc == PARSE_ERR) {
+	      fprintf(stderr, "Syntax error\n");
+	      continue;
+	    }
+	    inst_method_call(&WORK(0), consts.str_eval, 1, &WORK(0));
+	    inst_method_call(&WORK(0), consts.str_tostring, 1, &WORK(0));
+	    printf("%s\n", STRVAL(WORK(0))->data);
 	  }
-	  inst_method_call(&WORK(0), consts.str_eval, 1, &WORK(0));
-	  inst_method_call(&WORK(0), consts.str_tostring, 1, &WORK(0));
-	  printf("%s\n", STRVAL(WORK(0))->data);
-	}
+	} FRAME_ERROR_END;
       } FRAME_INPUT_END;
     } FRAME_WORK_END;
   } FRAME_MODULE_END;

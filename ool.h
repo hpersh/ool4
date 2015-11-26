@@ -331,7 +331,7 @@ enum {
   FRAME_TYPE_WORK,
   FRAME_TYPE_METHOD_CALL,
   FRAME_TYPE_MODULE,
-  FRAME_TYPE_RESTART,
+  FRAME_TYPE_ERROR,
   FRAME_TYPE_INPUT,
 };
 
@@ -491,38 +491,38 @@ struct frame_jmp {
 
 void frame_jmp(struct frame_jmp *fr, int code);
 
-struct frame_restart {
-  struct frame_jmp     base[1];
-  struct frame_restart *prev;
+struct frame_error {
+  struct frame_jmp   base[1];
+  struct frame_error *prev;
 };
 
-struct frame_restart *rstfp;
+struct frame_error *errfp;
 
 static inline void
-frame_restart_push(struct frame_restart *fr)
+frame_error_push(struct frame_error *fr)
 {
-  frame_push(fr->base->base, FRAME_TYPE_RESTART);
-  fr->prev = rstfp;
-  rstfp = fr;
+  frame_push(fr->base->base, FRAME_TYPE_ERROR);
+  fr->prev = errfp;
+  errfp = fr;
 }
 
 static inline void
-frame_restart_pop(void)
+frame_error_pop(void)
 {
-  rstfp = rstfp->prev;
+  errfp = errfp->prev;
   frame_pop();
 }
 
-#define RESTART_FRAME_BEGIN					\
+#define FRAME_ERROR_BEGIN					\
   {								\
-    struct frame_restart __frame_restart[1];			\
-    frame_restart_push(__frame_restart);			\
-    __frame_restart->code = setjmp(__frame_restart->jmp_buf);
+    struct frame_error __frame_error[1];			\
+    frame_error_push(__frame_error);				\
+    __frame_error->base->code = setjmp(__frame_error->base->jmp_buf);
 
-#define RESTART_FRAME_CODE (__frame_restart->code)
+#define FRAME_ERROR_CODE (__frame_error->base->code)
 
-#define RESTART_FRAME_END	  \
-    frame_restart_pop();	  \
+#define FRAME_ERROR_END	  \
+    frame_error_pop();	  \
   }
 
 struct frame_input {
