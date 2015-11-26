@@ -308,9 +308,41 @@ inst_init(inst_t inst, unsigned argc, ...)
 void inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv);
 
 void
+backtrace(void)
+{
+  fprintf(stderr, "Backtrace:\n");
+  
+  FRAME_WORK_BEGIN(1) {
+    struct frame_method_call *p;
+    for (p = mcfp; p != 0; p = p->prev) {
+      fprintf(stderr, "%s.%s(", STRVAL(CLASSVAL(p->cl)->name)->data, STRVAL(p->sel)->data);
+      unsigned n;
+      inst_t   *q;
+      for (q  = p->argv, n = p->argc; n > 0; --n, ++q) {
+	if (n < p->argc)  fprintf(stderr, ", ");
+	inst_method_call(&WORK(0), consts.str_tostring, 1, q);
+	fprintf(stderr, "%s", STRVAL(WORK(0))->data);
+      }
+      
+      fprintf(stderr, ")\n");
+    }
+  } FRAME_WORK_END;
+}
+
+unsigned err_lvl;
+
+void
 error(char *msg)
 {
+  if (++err_lvl > 1) {
+    fprintf(stderr, "Double error\n");
+
+    abort();
+  }
+
   fprintf(stderr, "%s\n", msg);
+
+  backtrace();
 
   abort();
 }
@@ -319,6 +351,12 @@ void
 error_argc(void)
 {
   error("Incorrect number of arguments");
+}
+
+void
+cm_cl_tostring(void)
+{
+  inst_assign(MC_RESULT, CLASSVAL(MC_ARG(0))->name);
 }
 
 void
@@ -1093,6 +1131,8 @@ struct {
   inst_t   *sel;
   void     (*func)(void);
 } init_method_tbl[] = {
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_cl_tostring },
+
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_quote,    cm_obj_quote },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_whilec,   cm_obj_while },
