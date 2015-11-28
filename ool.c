@@ -145,11 +145,14 @@ mem_alloc(unsigned size)
     
     page->blks_in_use = 0;
     
-    unsigned char *r;
-    unsigned      n;
+    unsigned char *r = (unsigned char *)(page + 1);
+    unsigned      n = MEM_PAGE_SIZE - sizeof(*page);
+    struct list   *s = li;
 
-    for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= size; n -= size, r += size) {
-      list_insert(((struct mem_blk_free *) r)->list_node, list_first(li));
+    for ( ; size >= MIN_BLK_SIZE; size >>= 1, --s) {
+      for (; n >= size; n -= size, r += size) {
+	list_insert(((struct mem_blk_free *) r)->list_node, list_first(s));
+      }
     }
   }
 
