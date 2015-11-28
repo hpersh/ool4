@@ -35,15 +35,12 @@ enum {
 };
 
 struct mem_page {
-  struct list list_node[1];	/* Page linkage */
-  unsigned    blks_in_use;
+  unsigned blks_in_use;
 };
 
 struct mem_blk_free {
   struct list list_node[1];	/* Free block linkage */
 };
-
-struct list mem_pages[1];
 
 struct list mem_blk_lists[MAX_BLK_SIZE_LOG2 + 1 - MIN_BLK_SIZE_LOG2];
 
@@ -99,8 +96,6 @@ blk_to_page(void *p)
 void
 mem_init(void)
 {
-  list_init(mem_pages);
-  
   unsigned i;
   for (i = 0; i < ARRAY_SIZE(mem_blk_lists); ++i)  list_init(&mem_blk_lists[i]);
 }
@@ -148,7 +143,6 @@ mem_alloc(unsigned size)
 
     assert(page != 0);
     
-    list_insert(page->list_node, list_end(mem_pages));
     page->blks_in_use = 0;
     
     unsigned char *r;
@@ -192,8 +186,6 @@ mem_free(void *p, unsigned size)
   for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= size; n -= size, r += size) {
     list_erase(((struct mem_blk_free *) r)->list_node);
   }
-
-  list_erase(page->list_node);
 
   mem_pages_free(page, 1);
 }
