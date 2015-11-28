@@ -39,13 +39,8 @@ struct mem_page {
   unsigned    blks_in_use;
 };
 
-struct mem_blk {
-  struct mem_page *page;
-};
-
 struct mem_blk_free {
-  struct mem_blk base[1];
-  struct list    list_node[1];	/* Free block linkage */
+  struct list list_node[1];	/* Free block linkage */
 };
 
 struct list mem_pages[1];
@@ -93,6 +88,12 @@ unsigned
 blk_size_align(unsigned size)
 {
   return (size < MIN_BLK_SIZE ? MIN_BLK_SIZE : round_up_to_power_of_2(size));
+}
+
+struct mem_page *
+blk_to_page(void *p)
+{
+  return ((struct mem_page *) (PTR_TO_UINT(p) & ~(MEM_PAGE_SIZE - 1)));
 }
 
 void
@@ -151,10 +152,9 @@ mem_alloc(unsigned size)
     page->blks_in_use = 0;
     
     unsigned char *r;
-    unsigned      n, b = sizeof(struct mem_blk) + size;
+    unsigned      n;
 
-    for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, r += b) {
-      ((struct mem_blk_free *) r)->base->page = page;
+    for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= size; n -= size, r += size) {
       list_insert(((struct mem_blk_free *) r)->list_node, list_first(li));
     }
   }
@@ -162,7 +162,7 @@ mem_alloc(unsigned size)
   struct list *p = list_first(li);
   list_erase(p);
 
-  ++FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node)->base->page->blks_in_use;
+  ++blk_to_page(FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node))->blks_in_use;
 
   return (p);
 }
@@ -182,14 +182,14 @@ mem_free(void *p, unsigned size)
 
   list_insert(q->list_node, list_first(li));
 
-  struct mem_page *page = q->base->page;
+  struct mem_page *page = blk_to_page(q);
 
   if (--page->blks_in_use > 0)  return;
 
   unsigned char *r;
-  unsigned      n, b = sizeof(struct mem_blk) + size;
+  unsigned      n;
 
-  for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= b; n -= b, r += b) {
+  for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= size; n -= size, r += size) {
     list_erase(((struct mem_blk_free *) r)->list_node);
   }
 
