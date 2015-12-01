@@ -572,12 +572,19 @@ cm_int_add(void)
 void
 cm_int_lt(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));
+
   bool_new(MC_RESULT, INTVAL(MC_ARG(0)) < INTVAL(MC_ARG(1)));
 }
 
 void
 cm_int_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+
   char buf[32];
 
   snprintf(buf, sizeof(buf), "%lld", INTVAL(MC_ARG(0)));
@@ -701,6 +708,9 @@ str_equal(inst_t s1, inst_t s2)
 void
 cm_str_eval(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(2) {
     inst_assign(&WORK(0), consts.cl_env);
     inst_assign(&WORK(1), MC_ARG(0));
