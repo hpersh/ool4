@@ -214,6 +214,22 @@ mem_free(void *p, unsigned size)
   mem_pages_free(page, 1);
 }
 
+unsigned
+is_subclass_of(inst_t cl1, inst_t cl2)
+{
+  for ( ; cl1 != 0; cl1 = CLASSVAL(cl1)->parent) {
+    if (cl1 == cl2)  return (true);
+  }
+
+  return (false);
+}
+
+unsigned
+is_kind_of(inst_t inst, inst_t cl)
+{
+  return (is_subclass_of(inst_of(inst), cl));
+}
+
 void
 inst_free(inst_t inst)
 {
@@ -347,28 +363,57 @@ backtrace(void)
 
 unsigned err_lvl;
 
-void
-error(char *msg)
+static inline void
+error_begin(void)
 {
-  if (++err_lvl > 1) {
-    fprintf(stderr, "Double error\n");
+  if (++err_lvl <= 1)  return;
+  
+  fprintf(stderr, "Double error\n");
+  
+  abort();
+}
 
-    abort();
-  }
-
-  fprintf(stderr, "%s\n", msg);
-
-  backtrace();
-
+static inline void
+error_end(void)
+{
   --err_lvl;
 
   frame_jmp(errfp->base, 1);
 }
 
 void
+error(char *msg)
+{
+  error_begin();
+
+  fprintf(stderr, "%s\n", msg);
+
+  backtrace();
+
+  error_end();
+}
+
+void
 error_argc(void)
 {
   error("Incorrect number of arguments");
+}
+
+void
+error_bad_arg(inst_t arg)
+{
+  error_begin();
+
+  fprintf(stderr, "Invalid argument: ");
+
+  FRAME_WORK_BEGIN(1) {
+    inst_method_call(&WORK(0), consts.str_tostring, 1, &arg);
+    fprintf(stderr, "%s\n", STRVAL(WORK(0))->data);
+  } FRAME_WORK_END;
+
+  backtrace();
+
+  error_end();
 }
 
 void
@@ -469,12 +514,19 @@ bool_new(inst_t *dst, bool val)
 void
 cm_bool_and(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_bool))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_bool))  error_bad_arg(MC_ARG(1));
+
   bool_new(MC_RESULT, BOOLVAL(MC_ARG(0)) && BOOLVAL(MC_ARG(1)));
 }
 
 void
 cm_bool_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_bool))  error_bad_arg(MC_ARG(0));
+
   unsigned n;
   char     *s;
 
@@ -510,6 +562,10 @@ int_new(inst_t *dst, intval_t val)
 void
 cm_int_add(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));
+
   int_new(MC_RESULT, INTVAL(MC_ARG(0)) + INTVAL(MC_ARG(1)));
 }
 
