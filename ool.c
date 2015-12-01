@@ -360,6 +360,8 @@ error(char *msg)
 
   backtrace();
 
+  --err_lvl;
+
   frame_jmp(errfp->base, 1);
 }
 
