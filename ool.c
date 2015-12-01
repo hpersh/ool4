@@ -38,11 +38,31 @@ struct mem_page {
   unsigned blks_in_use;
 };
 
-struct mem_blk_free {
-  struct list list_node[1];	/* Free block linkage */
+struct mem_blk_info {
+  unsigned    size;
+  struct list free_list[1];
 };
 
-struct list mem_blk_lists[MAX_BLK_SIZE_LOG2 + 1 - MIN_BLK_SIZE_LOG2];
+struct mem_blk {
+  struct mem_blk_info *bi;
+};
+
+struct mem_blk_free {
+  struct mem_blk base[1];
+  struct list    list_node[1];	/* Free block linkage */
+};
+
+struct mem_blk_info mem_blk_info[] = {
+  { MIN_BLK_SIZE },
+  { 32 },
+  { 48 },
+  { 64 },
+  { 104 },
+  { 128 },
+  { 256 },
+  { 512 },
+  { MAX_BLK_SIZE }
+};
 
 struct {
   struct {
@@ -64,27 +84,34 @@ round_up_to_power_of_2(unsigned n)
 }
 
 unsigned
-ilog2(unsigned i)
-{
-  assert(i != 0);
-
-  unsigned result;
-
-  for (result = 0; i > 1; i >>= 1, ++result);
-
-  return (result);
-}
-
-unsigned
 page_size_align(unsigned size)
 {
   return (((size - 1) / MEM_PAGE_SIZE) + 1);
 }
 
-unsigned
+struct mem_blk_info *
 blk_size_align(unsigned size)
 {
-  return (size < MIN_BLK_SIZE ? MIN_BLK_SIZE : round_up_to_power_of_2(size));
+  if (size < mem_blk_info[0].size)  return (&mem_blk_info[0]);
+
+  unsigned a, b, i;
+  struct mem_blk_info *bi;
+
+  for (a = 0, b = ARRAY_SIZE(mem_blk_info); ; ) {
+    bi = &mem_blk_info[i = (a + b) >> 1];
+    if (a >= b)  break;
+    if (size > bi->size) {
+      a = i + 1;
+      continue;
+    }
+    if (size < bi->size) {
+      b = i;
+      continue;
+    }
+    break;
+  }
+
+  return (bi);
 }
 
 struct mem_page *
@@ -97,7 +124,7 @@ void
 mem_init(void)
 {
   unsigned i;
-  for (i = 0; i < ARRAY_SIZE(mem_blk_lists); ++i)  list_init(&mem_blk_lists[i]);
+  for (i = 0; i < ARRAY_SIZE(mem_blk_info); ++i)  list_init(mem_blk_info[i].free_list);
 }
 
 void *
@@ -127,39 +154,31 @@ mem_pages_free(void *p, unsigned npages)
 void *
 mem_alloc(unsigned size)
 {
-  if (size > MAX_BLK_SIZE) {
-    void *p = mem_pages_alloc(page_size_align(size));
+  if (size > MAX_BLK_SIZE)  return (mem_pages_alloc(page_size_align(size)));
 
-    assert(p != 0);
+  struct mem_blk_info *bi = blk_size_align(size);
 
-    return (p);
-  }
-
-  size = blk_size_align(size);
-  struct list *li = &mem_blk_lists[ilog2(size) - MIN_BLK_SIZE_LOG2];
-
-  if (list_empty(li)) {
-    struct mem_page *page = mem_pages_alloc(1);
-
-    assert(page != 0);
-    
+  if (list_empty(bi->free_list)) {
+    struct mem_page *page = mem_pages_alloc(1);    
     page->blks_in_use = 0;
     
     unsigned char *r = (unsigned char *)(page + 1);
     unsigned      n = MEM_PAGE_SIZE - sizeof(*page);
-    struct list   *s = li;
+    struct mem_blk_info *s = bi;
 
-    for ( ; size >= MIN_BLK_SIZE; size >>= 1, --s) {
-      for (; n >= size; n -= size, r += size) {
-	list_insert(((struct mem_blk_free *) r)->list_node, list_first(s));
+    for ( ; s >= mem_blk_info; --s) {
+      unsigned b = sizeof(struct mem_blk) + s->size;
+      for (; n >= b; n -= b, r += b) {
+	((struct mem_blk_free *) r)->base->bi = s;
+	list_insert(((struct mem_blk_free *) r)->list_node, list_first(s->free_list));
       }
     }
   }
 
-  struct list *p = list_first(li);
+  struct list *p = list_first(bi->free_list);
   list_erase(p);
 
-  ++blk_to_page(FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node))->blks_in_use;
+  ++blk_to_page(p)->blks_in_use;
 
   return (p);
 }
@@ -173,21 +192,23 @@ mem_free(void *p, unsigned size)
     return;
   }
 
-  size = blk_size_align(size);
   struct mem_blk_free *q = FIELD_PTR_TO_STRUCT_PTR(p, struct mem_blk_free, list_node);
-  struct list *li = &mem_blk_lists[ilog2(size) - MIN_BLK_SIZE_LOG2];
+  struct mem_blk_info *bi = q->base->bi;
 
-  list_insert(q->list_node, list_first(li));
+  list_insert(q->list_node, list_first(bi->free_list));
 
   struct mem_page *page = blk_to_page(q);
 
   if (--page->blks_in_use > 0)  return;
 
-  unsigned char *r;
-  unsigned      n;
+  unsigned char *r = (unsigned char *)(page + 1);
+  unsigned      n = MEM_PAGE_SIZE - sizeof(*page);
 
-  for (r = (unsigned char *)(page + 1), n = MEM_PAGE_SIZE - sizeof(*page); n >= size; n -= size, r += size) {
-    list_erase(((struct mem_blk_free *) r)->list_node);
+  for ( ; bi >= mem_blk_info; --bi) {
+    unsigned b = sizeof(struct mem_blk) + bi->size;
+    for ( ; n >= b; n -= b, r += b) {
+      list_erase(((struct mem_blk_free *) r)->list_node);
+    }
   }
 
   mem_pages_free(page, 1);
