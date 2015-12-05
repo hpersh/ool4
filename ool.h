@@ -343,6 +343,7 @@ enum {
   FRAME_TYPE_METHOD_CALL,
   FRAME_TYPE_MODULE,
   FRAME_TYPE_ERROR,
+  FRAME_TYPE_BLOCK,
   FRAME_TYPE_INPUT,
 };
 
@@ -534,6 +535,40 @@ frame_error_pop(void)
 
 #define FRAME_ERROR_END	  \
     frame_error_pop();	  \
+  }
+
+struct frame_block {
+  struct frame_jmp   base[1];
+  struct frame_block *prev;
+  inst_t             dict;
+};
+
+struct frame_block *blkfp;
+
+static inline void
+frame_block_push(struct frame_block *fr, inst_t dict)
+{
+  frame_push(fr->base->base, FRAME_TYPE_BLOCK);
+  fr->prev = blkfp;
+  fr->dict = dict;
+  blkfp = fr;
+}
+
+static inline void
+frame_block_pop(void)
+{
+  blkfp = blkfp->prev;
+  frame_pop();
+}
+
+#define FRAME_BLOCK_BEGIN(dict)						\
+  {									\
+    struct frame_block __frame_block[1];				\
+    frame_block_push(__frame_block, (dict));				\
+    __frame_block->base->code = setjmp(__frame_block->base->jmp_buf);
+
+#define FRAME_BLOCK_END \
+    frame_block_pop();	\
   }
 
 struct frame_input {
