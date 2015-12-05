@@ -417,6 +417,9 @@ error_bad_arg(inst_t arg)
 void
 cm_cl_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.metaclass)  error_bad_arg(MC_ARG(0));
+
   inst_assign(MC_RESULT, CLASSVAL(MC_ARG(0))->name);
 }
 
@@ -441,12 +444,16 @@ object_free(inst_t inst, inst_t cl)
 void
 cm_obj_new(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_alloc(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_newc(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), MC_ARG(0));
     inst_init(WORK(0), 1, MC_ARG(1));
@@ -457,18 +464,24 @@ cm_obj_newc(void)
 void
 cm_obj_quote(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_eval(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_while(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+
   FRAME_WORK_BEGIN(2) {
     for (;;) {
       inst_method_call(&WORK(0), consts.str_eval, 1, &MC_ARG(0));
@@ -482,6 +495,8 @@ cm_obj_while(void)
 void
 cm_obj_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  
   inst_t cl_name = CLASSVAL(inst_of(MC_ARG(0)))->name;
   unsigned n = 1 + (STRVAL(cl_name)->size - 1) + 1 + 18 + 1 + 1;
   char buf[n];
@@ -494,7 +509,7 @@ cm_obj_tostring(void)
 void
 bool_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   BOOLVAL(inst) = va_arg(ap, unsigned);
   --argc;
@@ -542,7 +557,7 @@ cm_bool_tostring(void)
 void
 int_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   INTVAL(inst) = va_arg(ap, intval_t);
   --argc;
@@ -593,7 +608,7 @@ cm_int_tostring(void)
 void
 code_method_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   CODEMETHODVAL(inst) = va_arg(ap, void (*)(void));
   --argc;
@@ -611,6 +626,7 @@ code_method_new(inst_t *dst, void (*func)(void))
 void
 str_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
+  assert(0);
 }
 
 void
@@ -707,7 +723,6 @@ void
 cm_str_eval(void)
 {
   if (MC_ARGC != 1)  error_argc();
-  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
 
   FRAME_WORK_BEGIN(2) {
     inst_assign(&WORK(0), consts.cl_env);
@@ -719,13 +734,15 @@ cm_str_eval(void)
 void
 cm_str_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
 dptr_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 1);
+  assert(argc >= 2);
 
   CAR(inst) = inst_retain(va_arg(ap, inst_t));
   CDR(inst) = inst_retain(va_arg(ap, inst_t));
@@ -756,6 +773,9 @@ pair_new(inst_t *dst, inst_t car, inst_t cdr)
 void
 cm_pair_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(1) {
     array_new(&WORK(0), 5);
 
@@ -792,6 +812,9 @@ list_len(inst_t li)
 void
 cm_list_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(1) {
     unsigned n = list_len(MC_ARG(0));
     unsigned nn = (n == 0) ? 2 : (2 * n + 1), k;
@@ -828,6 +851,9 @@ method_call_new(inst_t *dst, inst_t sel, inst_t args)
 void
 cm_method_call_eval(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
+
   inst_t sel = CAR(MC_ARG(0)), args = CDR(MC_ARG(0));
   bool   noevalf = STRVAL(sel)->size > 1 && STRVAL(sel)->data[0] == '&';
   unsigned nargs = list_len(args);
@@ -859,6 +885,8 @@ block_new(inst_t *dst, inst_t args, inst_t body)
 inst_t *
 strdict_find(inst_t dict, inst_t key, inst_t **bucket)
 {
+  if (inst_of(key) != consts.cl_str)  error("Bad key");
+  
   inst_t *p = &ARRAYVAL(dict)->data[str_hash(key) & (ARRAYVAL(dict)->size - 1)];
   if (bucket != 0)  *bucket = p;
   inst_t q;
@@ -898,7 +926,7 @@ dict_find(inst_t dict, inst_t key, inst_t **bucket)
 void
 array_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   unsigned size = va_arg(ap, unsigned), s;
   --argc;
@@ -947,7 +975,7 @@ cm_array_new(void)
 void
 dict_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   SETVAL(inst)->find = va_arg(ap, inst_t *(*)(inst_t, inst_t, inst_t **));
   --argc;
@@ -1010,7 +1038,7 @@ dict_del(inst_t dict, inst_t key)
 void
 module_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 1);
+  assert(argc >= 2);
 
   inst_assign(&MODULEVAL(inst)->name, va_arg(ap, inst_t));
   inst_assign(&MODULEVAL(inst)->parent, va_arg(ap, inst_t));
