@@ -86,7 +86,7 @@ round_up_to_power_of_2(unsigned n)
 unsigned
 page_size_align(unsigned size)
 {
-  return (((size - 1) / MEM_PAGE_SIZE) + 1);
+  return (((size - 1) >> MEM_PAGE_SIZE_LOG2) + 1);
 }
 
 struct mem_blk_info *
@@ -202,13 +202,11 @@ mem_free(void *p, unsigned size)
   if (--page->blks_in_use > 0)  return;
 
   unsigned char *r = (unsigned char *)(page + 1);
-  unsigned      n = MEM_PAGE_SIZE - sizeof(*page);
+  unsigned      n = MEM_PAGE_SIZE - sizeof(*page), b;
 
-  for ( ; bi >= mem_blk_info; --bi) {
-    unsigned b = sizeof(struct mem_blk) + bi->size;
-    for ( ; n >= b; n -= b, r += b) {
-      list_erase(((struct mem_blk_free *) r)->list_node);
-    }
+  for ( ; n >= sizeof(struct mem_blk) + MIN_BLK_SIZE; n -= b, r += b) {
+    list_erase(((struct mem_blk_free *) r)->list_node);
+    b = sizeof(struct mem_blk) + ((struct mem_blk *) r)->bi->size;
   }
 
   mem_pages_free(page, 1);
@@ -1251,6 +1249,8 @@ init(void)
     /* Pass 1 - Create metaclass */
 
     consts.metaclass = (inst_t) mem_alloc(sizeof(struct inst_metaclass));
+    consts.metaclass->inst_of = 0;
+    consts.metaclass->ref_cnt = 1;
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
 
     /* Pass 2 - Create classes */
@@ -1317,9 +1317,9 @@ void
 stats_dump(void)
 {
   printf("Memory pages:\n");
-  printf("  Alloced: \t%llu\n", stats->mem->pages_alloced);
-  printf("  Freed: \t%llu\n", stats->mem->pages_freed);
-  printf("  In use: \t%llu\n", stats->mem->pages_in_use);
+  printf("  Alloced: \t\t%llu\n", stats->mem->pages_alloced);
+  printf("  Freed: \t\t%llu\n", stats->mem->pages_freed);
+  printf("  In use: \t\t%llu\n", stats->mem->pages_in_use);
   printf("  In use (max): \t%llu\n", stats->mem->pages_in_use_max);
 }
 
