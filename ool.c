@@ -1003,6 +1003,8 @@ dict_del(inst_t dict, inst_t key)
   if (p == 0)  return;
 
   inst_assign(p, CDR(*p));
+
+  --SETVAL(dict)->cnt;
 }
 
 void
@@ -1249,7 +1251,7 @@ init(void)
     /* Pass 1 - Create metaclass */
 
     consts.metaclass = (inst_t) mem_alloc(sizeof(struct inst_metaclass));
-    consts.metaclass->inst_of = 0;
+    memset(consts.metaclass, 0, sizeof(struct inst_metaclass));
     consts.metaclass->ref_cnt = 1;
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
 
@@ -1277,6 +1279,7 @@ init(void)
     /* Pass 4 - Fix-up classes */
 
     inst_assign(&CLASSVAL(consts.metaclass)->name, consts.str_metaclass);
+    inst_assign(&CLASSVAL(consts.metaclass)->parent, consts.cl_object);
     strdict_new(&CLASSVAL(consts.metaclass)->cl_vars,    32);
     strdict_new(&CLASSVAL(consts.metaclass)->cl_methods, 32);
     strdict_new(&CLASSVAL(consts.metaclass)->inst_vars,    32);

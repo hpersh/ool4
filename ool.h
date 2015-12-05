@@ -234,6 +234,15 @@ struct {
 inst_t inst_retain(inst_t inst);
 void   inst_release(inst_t inst);
 
+static inline inst_t
+inst_of(inst_t inst)
+{
+  return (inst == 0 ? consts.cl_object : inst->inst_of);
+}
+
+unsigned is_subclass_of(inst_t cl1, inst_t cl2);
+unsigned is_kind_of(inst_t inst, inst_t cl);
+
 static inline void
 inst_assign(inst_t *dst, inst_t src)
 {
@@ -241,12 +250,6 @@ inst_assign(inst_t *dst, inst_t src)
 
   *dst = inst_retain(src);
   inst_release(temp);
-}
-
-static inline inst_t
-inst_of(inst_t inst)
-{
-  return (inst == 0 ? consts.cl_object : inst->inst_of);
 }
 
 struct stream;
