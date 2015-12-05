@@ -127,6 +127,14 @@ struct inst_dptr {
 #define CDR(x)  (((struct inst_dptr *)(x))->val->cdr)
 void pair_new(inst_t *dst, inst_t car, inst_t cdr);
 void list_new(inst_t *dst, inst_t car, inst_t cdr);
+
+struct inst_dptr_cnt {
+  struct inst_dptr base[1];
+  struct {
+    unsigned cnt;
+  } val[1];
+};
+#define DPTRCNTVAL(x)  (((struct inst_dptr_cnt *)(x))->val)
 void method_call_new(inst_t *dst, inst_t sel, inst_t args);
 void block_new(inst_t *dst, inst_t args, inst_t body);
 

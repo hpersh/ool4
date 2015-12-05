@@ -3,7 +3,7 @@ CFLAGS	= -O3 -fomit-frame-pointer
 
 all:	ool
 
-ool:
+ool: ool.c parse.c ool.h
 	gcc $(CFLAGS) -o ool ool.c parse.c
 
 .PHONY:	clean

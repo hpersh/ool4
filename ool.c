@@ -839,11 +839,22 @@ cm_list_tostring(void)
 }
 
 void
+method_call_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+  
+  DPTRCNTVAL(inst)->cnt = va_arg(ap, unsigned);
+  --argc;
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
 method_call_new(inst_t *dst, inst_t sel, inst_t args)
 {
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), consts.cl_method_call);
-    inst_init(WORK(0), 2, sel, args);
+    inst_init(WORK(0), 3, list_len(args), sel, args);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
 }
@@ -856,7 +867,7 @@ cm_method_call_eval(void)
 
   inst_t sel = CAR(MC_ARG(0)), args = CDR(MC_ARG(0));
   bool   noevalf = STRVAL(sel)->size > 1 && STRVAL(sel)->data[0] == '&';
-  unsigned nargs = list_len(args);
+  unsigned nargs = DPTRCNTVAL(MC_ARG(0))->cnt;
   
   FRAME_WORK_BEGIN(nargs) {
     inst_t   *p;
@@ -873,11 +884,22 @@ cm_method_call_eval(void)
 }
 
 void
+block_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+
+  DPTRCNTVAL(inst)->cnt = va_arg(ap, unsigned);
+  --argc;
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
 block_new(inst_t *dst, inst_t args, inst_t body)
 {
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), consts.cl_method_call);
-    inst_init(WORK(0), 2, args, body);
+    inst_init(WORK(0), 3, list_len(args), args, body);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
 }
@@ -1189,8 +1211,8 @@ struct {
   { &consts.cl_dptr,        &consts.str_dptr,        &consts.cl_object, sizeof(struct inst_dptr),        dptr_init,        dptr_walk,        inst_free_parent },
   { &consts.cl_pair,        &consts.str_pair,        &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
   { &consts.cl_list,        &consts.str_list,        &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
-  { &consts.cl_method_call, &consts.str_method_call, &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
-  { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
+  { &consts.cl_method_call, &consts.str_method_call, &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    method_call_init, inst_walk_parent, inst_free_parent },
+  { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    block_init,       inst_walk_parent, inst_free_parent },
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent },
