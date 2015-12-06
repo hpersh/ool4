@@ -884,6 +884,43 @@ cm_method_call_eval(void)
 }
 
 void
+cm_method_call_tostring(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
+
+  FRAME_WORK_BEGIN(1) {
+    unsigned n = DPTRCNTVAL(MC_ARG(0))->cnt;
+    assert(n > 0);
+    unsigned nn = 1 + (n == 1 ? 3 : 2 + 4 * (n - 1) - 1) + 1, i, k;
+    inst_t *p, q;
+    char   *s;
+
+    array_new(&WORK(0), 1 + nn);
+
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "[");
+    s = STRVAL(CAR(MC_ARG(0)))->data;
+    for (i = 0, p = &ARRAYVAL(WORK(0))->data[2], q = CDR(MC_ARG(0)); i < 2 || q != 0; ++i) {
+      if (i & 1) {
+	inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
+	char *t = index(s, ':');
+	k = t ? t + 1 - s : strlen(s);
+	str_newc(p++, 1, k + 1, s);
+	s += k;
+	continue;
+      }
+      if (i > 0)  inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
+      inst_method_call(p++, consts.str_tostring, 1, &CAR(q));
+      q = CDR(q);
+    }
+    str_newc(p, 1, 2, "]");
+
+    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
+  } FRAME_WORK_END;
+}
+
+void
 block_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 1);
@@ -898,7 +935,7 @@ void
 block_new(inst_t *dst, inst_t args, inst_t body)
 {
   FRAME_WORK_BEGIN(1) {
-    inst_alloc(&WORK(0), consts.cl_method_call);
+    inst_alloc(&WORK(0), consts.cl_block);
     inst_init(WORK(0), 3, list_len(args), args, body);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
@@ -1285,7 +1322,8 @@ struct {
 
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring },
 
-  { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_method_call_eval },
+  { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_method_call_eval },
+  { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_method_call_tostring },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
