@@ -920,27 +920,6 @@ cm_method_call_tostring(void)
   } FRAME_WORK_END;
 }
 
-void
-block_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
-{
-  assert(argc >= 1);
-
-  DPTRCNTVAL(inst)->cnt = va_arg(ap, unsigned);
-  --argc;
-
-  inst_init_parent(inst, cl, argc, ap);
-}
-
-void
-block_new(inst_t *dst, inst_t args, inst_t body)
-{
-  FRAME_WORK_BEGIN(1) {
-    inst_alloc(&WORK(0), consts.cl_block);
-    inst_init(WORK(0), 3, list_len(args), args, body);
-    inst_assign(dst, WORK(0));
-  } FRAME_WORK_END;
-}
-
 inst_t *
 strdict_find(inst_t dict, inst_t key, inst_t **bucket)
 {
@@ -1095,6 +1074,79 @@ dict_del(inst_t dict, inst_t key)
 }
 
 void
+block_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+
+  DPTRCNTVAL(inst)->cnt = va_arg(ap, unsigned);
+  --argc;
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
+block_new(inst_t *dst, inst_t args, inst_t body)
+{
+  FRAME_WORK_BEGIN(1) {
+    inst_alloc(&WORK(0), consts.cl_block);
+    inst_init(WORK(0), 3, list_len(args), args, body);
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_block_eval(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_block)  error_bad_arg(MC_ARG(0));
+  if (!(MC_ARG(1) == 0 || inst_of(MC_ARG(1)) == consts.cl_list))  error_bad_arg(MC_ARG(1));
+  unsigned nargs = list_len(MC_ARG(1));
+  if (nargs != DPTRCNTVAL(MC_ARG(0))->cnt)  error_argc();
+  
+  FRAME_WORK_BEGIN(2) {
+    strdict_new(&WORK(0), 32);
+    inst_t p, q;
+    for (p = CAR(MC_ARG(0)), q = MC_ARG(1); p != 0; p = CDR(p), q = CDR(q)) {
+      dict_at_put(WORK(0), CAR(p), CAR(q));
+    }
+    
+    FRAME_BLOCK_BEGIN(WORK(0)) {
+      for (p = CDR(MC_ARG(0)); p != 0; p = CDR(p)) {
+	inst_method_call(&WORK(1), consts.str_eval, 1, &CAR(p));
+      }
+    } FRAME_BLOCK_END;
+    
+    inst_assign(MC_RESULT, WORK(1));
+  } FRAME_WORK_END;
+}
+
+void
+cm_block_tostring(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_block)  error_bad_arg(MC_ARG(0));
+
+  FRAME_WORK_BEGIN(1) {
+    unsigned n = 1 + list_len(CDR(MC_ARG(0)));
+    unsigned nn = 1 + 2 * n - 1 + 1, i, k;
+    inst_t *p, q;
+
+    array_new(&WORK(0), 1 + nn);
+
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "{");
+    inst_method_call(&ARRAYVAL(WORK(0))->data[2], consts.str_tostring, 1, &CAR(MC_ARG(0)));
+    for (p = &ARRAYVAL(WORK(0))->data[3], q = CDR(MC_ARG(0)); q != 0; q = CDR(q)) {
+      inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
+      inst_method_call(p++, consts.str_tostring, 1, &CAR(q));
+    }      
+    str_newc(p, 1, 2, "}");
+
+    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
+  } FRAME_WORK_END;
+}
+
+void
 module_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 2);
@@ -1128,15 +1180,33 @@ module_new(inst_t *dst, inst_t name, inst_t parent)
 inst_t *
 env_find(inst_t var)
 {
-  struct frame_module *p;
+  {
+    struct frame_block *p;
 
-  for (p = modfp; p != 0; p = p->prev) {
-    inst_t q = dict_at(p->module, var);
+    for (p = blkfp; p != 0; p = p->prev) {
+      inst_t q = dict_at(p->dict, var);
 
-    if (q != 0)  return (&CDR(q));
+      if (q != 0)  return (&CDR(q));
+    }
+  }
+
+  {
+    struct frame_module *p;
+    
+    for (p = modfp; p != 0; p = p->prev) {
+      inst_t q = dict_at(p->module, var);
+      
+      if (q != 0)  return (&CDR(q));
+    }
   }
 
   return (0);
+}
+
+inst_t
+env_top(void)
+{
+  return (blkfp ? blkfp->dict : modfp->module);
 }
 
 inst_t
@@ -1150,23 +1220,23 @@ env_at(inst_t var)
 }
 
 void
+env_at_def(inst_t var, inst_t val)
+{
+  dict_at_put(env_top(), var, val);
+}
+
+void
 env_at_put(inst_t var, inst_t val)
 {
   inst_t *p = env_find(var);
 
   if (p == 0) {
-    dict_at_put(MODULE_CUR, var, val);
+    env_at_def(var, val);
 
     return;
   }
 
   inst_assign(p, val);
-}
-
-void
-env_at_def(inst_t var, inst_t val)
-{
-  dict_at_put(MODULE_CUR, var, val);
 }
 
 void
@@ -1324,6 +1394,9 @@ struct {
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_method_call_eval },
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_method_call_tostring },
+
+  { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_evalc,    cm_block_eval },
+  { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_block_tostring },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
