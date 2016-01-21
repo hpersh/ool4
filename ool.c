@@ -86,7 +86,7 @@ round_up_to_power_of_2(unsigned n)
 unsigned
 page_size_align(unsigned size)
 {
-  return (((size - 1) / MEM_PAGE_SIZE) + 1);
+  return (((size - 1) >> MEM_PAGE_SIZE_LOG2) + 1);
 }
 
 struct mem_blk_info *
@@ -204,13 +204,11 @@ mem_free(void *p, unsigned size)
   if (--page->blks_in_use > 0)  return;
 
   unsigned char *r = (unsigned char *)(page + 1);
-  unsigned      n = MEM_PAGE_SIZE - sizeof(*page);
+  unsigned      n = MEM_PAGE_SIZE - sizeof(*page), b;
 
-  for ( ; bi >= mem_blk_info; --bi) {
-    unsigned b = sizeof(struct mem_blk) + bi->size;
-    for ( ; n >= b; n -= b, r += b) {
-      list_erase(((struct mem_blk_free *) r)->list_node);
-    }
+  for ( ; n >= sizeof(struct mem_blk) + MIN_BLK_SIZE; n -= b, r += b) {
+    list_erase(((struct mem_blk_free *) r)->list_node);
+    b = sizeof(struct mem_blk) + ((struct mem_blk *) r)->bi->size;
   }
 
   mem_pages_free(page, 1);
@@ -296,6 +294,17 @@ inst_alloc(inst_t *dst, inst_t cl)
   inst_t inst = (inst_t) mem_alloc(CLASSVAL(cl)->inst_size, true);
 
   inst_assign(&inst->inst_of, cl);
+  
+  inst_assign(dst, inst);
+}
+
+void
+inst_allocz(inst_t *dst, inst_t cl)
+{
+  unsigned n = CLASSVAL(cl)->inst_size;
+  inst_t inst = (inst_t) mem_alloc(n);
+  memset(inst, 0, n);
+  inst->inst_of = inst_retain(cl);
   
   inst_assign(dst, inst);
 }
@@ -420,6 +429,9 @@ error_bad_arg(inst_t arg)
 void
 cm_cl_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.metaclass)  error_bad_arg(MC_ARG(0));
+
   inst_assign(MC_RESULT, CLASSVAL(MC_ARG(0))->name);
 }
 
@@ -444,12 +456,16 @@ object_free(inst_t inst, inst_t cl)
 void
 cm_obj_new(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_alloc(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_newc(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), MC_ARG(0));
     inst_init(WORK(0), 1, MC_ARG(1));
@@ -460,18 +476,24 @@ cm_obj_newc(void)
 void
 cm_obj_quote(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_eval(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_obj_while(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+
   FRAME_WORK_BEGIN(2) {
     for (;;) {
       inst_method_call(&WORK(0), consts.str_eval, 1, &MC_ARG(0));
@@ -485,6 +507,8 @@ cm_obj_while(void)
 void
 cm_obj_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  
   inst_t cl_name = CLASSVAL(inst_of(MC_ARG(0)))->name;
   unsigned n = 1 + (STRVAL(cl_name)->size - 1) + 1 + 18 + 1 + 1;
   char buf[n];
@@ -497,7 +521,7 @@ cm_obj_tostring(void)
 void
 bool_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   BOOLVAL(inst) = va_arg(ap, unsigned);
   --argc;
@@ -545,7 +569,7 @@ cm_bool_tostring(void)
 void
 int_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   INTVAL(inst) = va_arg(ap, intval_t);
   --argc;
@@ -596,7 +620,7 @@ cm_int_tostring(void)
 void
 code_method_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   CODEMETHODVAL(inst) = va_arg(ap, void (*)(void));
   --argc;
@@ -614,6 +638,7 @@ code_method_new(inst_t *dst, void (*func)(void))
 void
 str_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
+  assert(0);
 }
 
 void
@@ -710,7 +735,6 @@ void
 cm_str_eval(void)
 {
   if (MC_ARGC != 1)  error_argc();
-  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
 
   FRAME_WORK_BEGIN(2) {
     inst_assign(&WORK(0), consts.cl_env);
@@ -722,13 +746,15 @@ cm_str_eval(void)
 void
 cm_str_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
 dptr_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 1);
+  assert(argc >= 2);
 
   inst_assign(&CAR(inst), va_arg(ap, inst_t));
   inst_assign(&CDR(inst), va_arg(ap, inst_t));
@@ -750,7 +776,7 @@ void
 pair_new(inst_t *dst, inst_t car, inst_t cdr)
 {
   FRAME_WORK_BEGIN(1) {
-    inst_alloc(&WORK(0), consts.cl_pair);
+    inst_allocz(&WORK(0), consts.cl_pair);
     inst_init(WORK(0), 2, car, cdr);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
@@ -759,6 +785,9 @@ pair_new(inst_t *dst, inst_t car, inst_t cdr)
 void
 cm_pair_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(1) {
     array_new(&WORK(0), 5);
 
@@ -795,6 +824,9 @@ list_len(inst_t li)
 void
 cm_list_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(1) {
     unsigned n = list_len(MC_ARG(0));
     unsigned nn = (n == 0) ? 2 : (2 * n + 1), k;
@@ -819,11 +851,22 @@ cm_list_tostring(void)
 }
 
 void
+method_call_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+  
+  DPTRCNTVAL(inst)->cnt = va_arg(ap, unsigned);
+  --argc;
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
 method_call_new(inst_t *dst, inst_t sel, inst_t args)
 {
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), consts.cl_method_call);
-    inst_init(WORK(0), 2, sel, args);
+    inst_init(WORK(0), 3, list_len(args), sel, args);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
 }
@@ -831,9 +874,12 @@ method_call_new(inst_t *dst, inst_t sel, inst_t args)
 void
 cm_method_call_eval(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
+
   inst_t sel = CAR(MC_ARG(0)), args = CDR(MC_ARG(0));
   bool   noevalf = STRVAL(sel)->size > 1 && STRVAL(sel)->data[0] == '&';
-  unsigned nargs = list_len(args);
+  unsigned nargs = DPTRCNTVAL(MC_ARG(0))->cnt;
   
   FRAME_WORK_BEGIN(nargs) {
     inst_t   *p;
@@ -850,18 +896,47 @@ cm_method_call_eval(void)
 }
 
 void
-block_new(inst_t *dst, inst_t args, inst_t body)
+cm_method_call_tostring(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(1) {
-    inst_alloc(&WORK(0), consts.cl_method_call);
-    inst_init(WORK(0), 2, args, body);
-    inst_assign(dst, WORK(0));
+    unsigned n = DPTRCNTVAL(MC_ARG(0))->cnt;
+    assert(n > 0);
+    unsigned nn = 1 + (n == 1 ? 3 : 2 + 4 * (n - 1) - 1) + 1, i, k;
+    inst_t *p, q;
+    char   *s;
+
+    array_new(&WORK(0), 1 + nn);
+
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "[");
+    s = STRVAL(CAR(MC_ARG(0)))->data;
+    for (i = 0, p = &ARRAYVAL(WORK(0))->data[2], q = CDR(MC_ARG(0)); i < 2 || q != 0; ++i) {
+      if (i & 1) {
+	inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
+	char *t = index(s, ':');
+	k = t ? t + 1 - s : strlen(s);
+	str_newc(p++, 1, k + 1, s);
+	s += k;
+	continue;
+      }
+      if (i > 0)  inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
+      inst_method_call(p++, consts.str_tostring, 1, &CAR(q));
+      q = CDR(q);
+    }
+    str_newc(p, 1, 2, "]");
+
+    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
   } FRAME_WORK_END;
 }
 
 inst_t *
 strdict_find(inst_t dict, inst_t key, inst_t **bucket)
 {
+  if (inst_of(key) != consts.cl_str)  error("Bad key");
+  
   inst_t *p = &ARRAYVAL(dict)->data[str_hash(key) & (ARRAYVAL(dict)->size - 1)];
   if (bucket != 0)  *bucket = p;
   inst_t q;
@@ -901,7 +976,7 @@ dict_find(inst_t dict, inst_t key, inst_t **bucket)
 void
 array_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   unsigned size = va_arg(ap, unsigned), s;
   --argc;
@@ -949,7 +1024,7 @@ cm_array_new(void)
 void
 dict_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 0);
+  assert(argc >= 1);
 
   SETVAL(inst)->find = va_arg(ap, inst_t *(*)(inst_t, inst_t, inst_t **));
   --argc;
@@ -1005,12 +1080,87 @@ dict_del(inst_t dict, inst_t key)
   if (p == 0)  return;
 
   inst_assign(p, CDR(*p));
+
+  --SETVAL(dict)->cnt;
+}
+
+void
+block_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+
+  DPTRCNTVAL(inst)->cnt = va_arg(ap, unsigned);
+  --argc;
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
+block_new(inst_t *dst, inst_t args, inst_t body)
+{
+  FRAME_WORK_BEGIN(1) {
+    inst_alloc(&WORK(0), consts.cl_block);
+    inst_init(WORK(0), 3, list_len(args), args, body);
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_block_eval(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_block)  error_bad_arg(MC_ARG(0));
+  if (!(MC_ARG(1) == 0 || inst_of(MC_ARG(1)) == consts.cl_list))  error_bad_arg(MC_ARG(1));
+  unsigned nargs = list_len(MC_ARG(1));
+  if (nargs != DPTRCNTVAL(MC_ARG(0))->cnt)  error_argc();
+  
+  FRAME_WORK_BEGIN(2) {
+    strdict_new(&WORK(0), 32);
+    inst_t p, q;
+    for (p = CAR(MC_ARG(0)), q = MC_ARG(1); p != 0; p = CDR(p), q = CDR(q)) {
+      dict_at_put(WORK(0), CAR(p), CAR(q));
+    }
+    
+    FRAME_BLOCK_BEGIN(WORK(0)) {
+      for (p = CDR(MC_ARG(0)); p != 0; p = CDR(p)) {
+	inst_method_call(&WORK(1), consts.str_eval, 1, &CAR(p));
+      }
+    } FRAME_BLOCK_END;
+    
+    inst_assign(MC_RESULT, WORK(1));
+  } FRAME_WORK_END;
+}
+
+void
+cm_block_tostring(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_block)  error_bad_arg(MC_ARG(0));
+
+  FRAME_WORK_BEGIN(1) {
+    unsigned n = 1 + list_len(CDR(MC_ARG(0)));
+    unsigned nn = 1 + 2 * n - 1 + 1, i, k;
+    inst_t *p, q;
+
+    array_new(&WORK(0), 1 + nn);
+
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "{");
+    inst_method_call(&ARRAYVAL(WORK(0))->data[2], consts.str_tostring, 1, &CAR(MC_ARG(0)));
+    for (p = &ARRAYVAL(WORK(0))->data[3], q = CDR(MC_ARG(0)); q != 0; q = CDR(q)) {
+      inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
+      inst_method_call(p++, consts.str_tostring, 1, &CAR(q));
+    }      
+    str_newc(p, 1, 2, "}");
+
+    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
+  } FRAME_WORK_END;
 }
 
 void
 module_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc > 1);
+  assert(argc >= 2);
 
   inst_assign(&MODULEVAL(inst)->name, va_arg(ap, inst_t));
   inst_assign(&MODULEVAL(inst)->parent, va_arg(ap, inst_t));
@@ -1038,18 +1188,66 @@ module_new(inst_t *dst, inst_t name, inst_t parent)
   } FRAME_WORK_END;
 }
 
+void
+metaclass_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 3);
+
+  inst_assign(&CLASSVAL(inst)->name, va_arg(ap, inst_t));
+  inst_assign(&CLASSVAL(inst)->module, MODULE_CUR);
+  inst_assign(&CLASSVAL(inst)->parent, va_arg(ap, inst_t));
+  strdict_new(&CLASSVAL(inst)->cl_vars, 32);
+  strdict_new(&CLASSVAL(inst)->cl_methods, 32);
+  strdict_new(&CLASSVAL(inst)->inst_vars, 32);
+  strdict_new(&CLASSVAL(inst)->inst_methods, 32);
+
+  for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size; ; ) {
+  }
+  CLASSVAL(inst)->inst_size = ofs;
+  CLASSVAL(inst)->walk = user_class_walk;
+  CLASSVAL(inst)->free = inst_Free_parent;
+}
+
+void
+cm_metaclass_new(void)
+{
+  FRAME_WORK_BEGIN(1) {
+    inst_allocz(&WORK(0), consts.metaclass);
+    inst_init(WORK(0), 3, MC_ARG(1), MC_ARG(2), MC_ARG(3));
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
+}
+
 inst_t *
 env_find(inst_t var)
 {
-  struct frame_module *p;
+  {
+    struct frame_block *p;
 
-  for (p = modfp; p != 0; p = p->prev) {
-    inst_t q = dict_at(p->module, var);
+    for (p = blkfp; p != 0; p = p->prev) {
+      inst_t q = dict_at(p->dict, var);
 
-    if (q != 0)  return (&CDR(q));
+      if (q != 0)  return (&CDR(q));
+    }
+  }
+
+  {
+    struct frame_module *p;
+    
+    for (p = modfp; p != 0; p = p->prev) {
+      inst_t q = dict_at(p->module, var);
+      
+      if (q != 0)  return (&CDR(q));
+    }
   }
 
   return (0);
+}
+
+inst_t
+env_top(void)
+{
+  return (blkfp ? blkfp->dict : modfp->module);
 }
 
 inst_t
@@ -1063,23 +1261,23 @@ env_at(inst_t var)
 }
 
 void
+env_at_def(inst_t var, inst_t val)
+{
+  dict_at_put(env_top(), var, val);
+}
+
+void
 env_at_put(inst_t var, inst_t val)
 {
   inst_t *p = env_find(var);
 
   if (p == 0) {
-    dict_at_put(MODULE_CUR, var, val);
+    env_at_def(var, val);
 
     return;
   }
 
   inst_assign(p, val);
-}
-
-void
-env_at_def(inst_t var, inst_t val)
-{
-  dict_at_put(MODULE_CUR, var, val);
 }
 
 void
@@ -1161,8 +1359,8 @@ struct {
   { &consts.cl_dptr,        &consts.str_dptr,        &consts.cl_object, sizeof(struct inst_dptr),        dptr_init,        dptr_walk,        inst_free_parent },
   { &consts.cl_pair,        &consts.str_pair,        &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
   { &consts.cl_list,        &consts.str_list,        &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
-  { &consts.cl_method_call, &consts.str_method_call, &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
-  { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
+  { &consts.cl_method_call, &consts.str_method_call, &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    method_call_init, inst_walk_parent, inst_free_parent },
+  { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    block_init,       inst_walk_parent, inst_free_parent },
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent },
@@ -1235,7 +1433,11 @@ struct {
 
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring },
 
-  { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval, cm_method_call_eval },
+  { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_method_call_eval },
+  { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_method_call_tostring },
+
+  { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_evalc,    cm_block_eval },
+  { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_block_tostring },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
@@ -1250,7 +1452,7 @@ init(void)
   FRAME_WORK_BEGIN(1) {
     /* Pass 1 - Create metaclass */
 
-    consts.metaclass = (inst_t) mem_alloc(sizeof(struct inst_metaclass), true);
+    inst_assign(&consts.metaclass, (inst_t) mem_alloc(sizeof(struct inst_metaclass), true));
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
 
     /* Pass 2 - Create classes */
@@ -1277,6 +1479,7 @@ init(void)
     /* Pass 4 - Fix-up classes */
 
     inst_assign(&CLASSVAL(consts.metaclass)->name, consts.str_metaclass);
+    inst_assign(&CLASSVAL(consts.metaclass)->parent, consts.cl_object);
     strdict_new(&CLASSVAL(consts.metaclass)->cl_vars,    32);
     strdict_new(&CLASSVAL(consts.metaclass)->cl_methods, 32);
     strdict_new(&CLASSVAL(consts.metaclass)->inst_vars,    32);
@@ -1317,9 +1520,9 @@ void
 stats_dump(void)
 {
   printf("Memory pages:\n");
-  printf("  Alloced: \t%llu\n", stats->mem->pages_alloced);
-  printf("  Freed: \t%llu\n", stats->mem->pages_freed);
-  printf("  In use: \t%llu\n", stats->mem->pages_in_use);
+  printf("  Alloced: \t\t%llu\n", stats->mem->pages_alloced);
+  printf("  Freed: \t\t%llu\n", stats->mem->pages_freed);
+  printf("  In use: \t\t%llu\n", stats->mem->pages_in_use);
   printf("  In use (max): \t%llu\n", stats->mem->pages_in_use_max);
 }
 
