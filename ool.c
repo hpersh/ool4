@@ -822,22 +822,54 @@ pair_new(inst_t *dst, inst_t car, inst_t cdr)
 }
 
 void
+cm_pair_eval(void)
+{
+  FRAME_WORK_BEGIN(2) {
+    inst_method_call(&WORK(0), consts.str_eval, 1, &CAR(MC_ARG(0)));
+    inst_method_call(&WORK(1), consts.str_eval, 1, &CDR(MC_ARG(0)));
+    pair_new(MC_RESULT, WORK(0), WORK(1));
+  } FRAME_WORK_END;
+}
+
+void
+pair_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
+{
+  FRAME_WORK_BEGIN(5) {
+    str_newc(&WORK(0), 1, 2, "(");
+    inst_method_call(&WORK(1), sel, 1, &CAR(MC_ARG(0)));
+    str_newc(&WORK(2), 1, 3, ", ");
+    inst_method_call(&WORK(3), sel, 1, &CDR(MC_ARG(0)));
+    str_newc(&WORK(4), 1, 2, ")");
+
+    str_newv(MC_RESULT, 5, &WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
 cm_pair_tostring(void)
 {
   if (MC_ARGC != 1)  error_argc();
   if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
 
-  FRAME_WORK_BEGIN(1) {
-    array_new(&WORK(0), 5);
+  pair_tostring_write(MC_RESULT, MC_ARG(0), consts.str_tostring);
+}
 
-    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, "(");
-    inst_method_call(&ARRAYVAL(WORK(0))->data[1], consts.str_tostring, 1, &CAR(MC_ARG(0)));
-    str_newc(&ARRAYVAL(WORK(0))->data[2], 1, 3, ", ");
-    inst_method_call(&ARRAYVAL(WORK(0))->data[3], consts.str_tostring, 1, &CDR(MC_ARG(0)));
-    str_newc(&ARRAYVAL(WORK(0))->data[4], 1, 2, ")");
+void
+cm_pair__write(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
 
-    str_newv(MC_RESULT, ARRAYVAL(WORK(0))->size, ARRAYVAL(WORK(0))->data);
-  } FRAME_WORK_END;
+  pair_tostring_write(MC_RESULT, MC_ARG(0), consts.str__write);
+}
+
+void
+cm_pair_write(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
+
+  pair_tostring_write(MC_RESULT, MC_ARG(0), consts.str_write);
 }
 
 void
@@ -861,13 +893,24 @@ list_len(inst_t li)
 }
 
 void
-cm_list_tostring(void)
+cm_list_eval(void)
 {
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+  FRAME_WORK_BEGIN(2) {
+    inst_t *p, q;
+    for (p = &WORK(0), q = MC_ARG(0); q != 0; q = CDR(q)) {
+      inst_method_call(&WORK(1), consts.str_eval, 1, &CAR(q));
+      list_new(p, WORK(1), 0);
+      p = &CDR(*p);
+    }
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
+}
 
+void
+list_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
+{
   FRAME_WORK_BEGIN(1) {
-    unsigned n = list_len(MC_ARG(0));
+    unsigned n = list_len(inst);
     unsigned nn = (n == 0) ? 2 : (2 * n + 1), k;
     inst_t *p, q;
 
@@ -875,18 +918,45 @@ cm_list_tostring(void)
 
     str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
     str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "(");
-    for (p = &ARRAYVAL(WORK(0))->data[2], q = MC_ARG(0); q != 0; q = CDR(q)) {
-      if (q != MC_ARG(0)) {
+    for (p = &ARRAYVAL(WORK(0))->data[2], q = inst; q != 0; q = CDR(q)) {
+      if (q != inst) {
 	inst_assign(p, ARRAYVAL(WORK(0))->data[0]);
 	++p;
       }
-      inst_method_call(p, consts.str_tostring, 1, &CAR(q));
+      inst_method_call(p, sel, 1, &CAR(q));
       ++p;
     }
     str_newc(p, 1, 2, ")");
 
-    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
+    str_newv(dst, nn, &ARRAYVAL(WORK(0))->data[1]);
   } FRAME_WORK_END;
+}
+
+void
+cm_list_tostring(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
+  list_tostring_write(MC_RESULT, MC_ARG(0), consts.str_tostring);
+}
+
+void
+cm_list__write(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
+  list_tostring_write(MC_RESULT, MC_ARG(0), consts.str__write);
+}
+
+void
+cm_list_write(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
+  list_tostring_write(MC_RESULT, MC_ARG(0), consts.str_write);
 }
 
 void
@@ -1481,9 +1551,15 @@ struct {
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_str__write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },
 
+  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_pair_eval },
   { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_pair_tostring },
+  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_pair__write },
+  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_pair_write },
 
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_list_eval },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring },
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_list__write },
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_list_write },
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_method_call_eval },
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_method_call_tostring },
