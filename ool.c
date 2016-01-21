@@ -299,17 +299,6 @@ inst_alloc(inst_t *dst, inst_t cl)
 }
 
 void
-inst_allocz(inst_t *dst, inst_t cl)
-{
-  unsigned n = CLASSVAL(cl)->inst_size;
-  inst_t inst = (inst_t) mem_alloc(n);
-  memset(inst, 0, n);
-  inst->inst_of = inst_retain(cl);
-  
-  inst_assign(dst, inst);
-}
-
-void
 inst_init_parent(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   inst_t parent = CLASSVAL(cl)->parent;
@@ -776,7 +765,7 @@ void
 pair_new(inst_t *dst, inst_t car, inst_t cdr)
 {
   FRAME_WORK_BEGIN(1) {
-    inst_allocz(&WORK(0), consts.cl_pair);
+    inst_alloc(&WORK(0), consts.cl_pair);
     inst_init(WORK(0), 2, car, cdr);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
@@ -1189,6 +1178,11 @@ module_new(inst_t *dst, inst_t name, inst_t parent)
 }
 
 void
+user_class_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
+{
+}
+
+void
 metaclass_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 3);
@@ -1201,18 +1195,19 @@ metaclass_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
   strdict_new(&CLASSVAL(inst)->inst_vars, 32);
   strdict_new(&CLASSVAL(inst)->inst_methods, 32);
 
+  unsigned ofs;
   for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size; ; ) {
   }
   CLASSVAL(inst)->inst_size = ofs;
   CLASSVAL(inst)->walk = user_class_walk;
-  CLASSVAL(inst)->free = inst_Free_parent;
+  CLASSVAL(inst)->free = inst_free_parent;
 }
 
 void
 cm_metaclass_new(void)
 {
   FRAME_WORK_BEGIN(1) {
-    inst_allocz(&WORK(0), consts.metaclass);
+    inst_alloc(&WORK(0), consts.metaclass);
     inst_init(WORK(0), 3, MC_ARG(1), MC_ARG(2), MC_ARG(3));
     inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
