@@ -1005,13 +1005,10 @@ cm_method_call_eval(void)
 }
 
 void
-cm_method_call_tostring(void)
+method_call_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
 {
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
-
   FRAME_WORK_BEGIN(1) {
-    unsigned n = DPTRCNTVAL(MC_ARG(0))->cnt;
+    unsigned n = DPTRCNTVAL(inst)->cnt;
     assert(n > 0);
     unsigned nn = 1 + (n == 1 ? 3 : 2 + 4 * (n - 1) - 1) + 1, i, k;
     inst_t *p, q;
@@ -1021,8 +1018,8 @@ cm_method_call_tostring(void)
 
     str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
     str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "[");
-    s = STRVAL(CAR(MC_ARG(0)))->data;
-    for (i = 0, p = &ARRAYVAL(WORK(0))->data[2], q = CDR(MC_ARG(0)); i < 2 || q != 0; ++i) {
+    s = STRVAL(CAR(inst))->data;
+    for (i = 0, p = &ARRAYVAL(WORK(0))->data[2], q = CDR(inst); i < 2 || q != 0; ++i) {
       if (i & 1) {
 	inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
 	char *t = index(s, ':');
@@ -1032,12 +1029,34 @@ cm_method_call_tostring(void)
 	continue;
       }
       if (i > 0)  inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
-      inst_method_call(p++, consts.str_tostring, 1, &CAR(q));
+      inst_method_call(p++, sel, 1, &CAR(q));
       q = CDR(q);
     }
     str_newc(p, 1, 2, "]");
 
-    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
+    str_newv(dst, nn, &ARRAYVAL(WORK(0))->data[1]);
+  } FRAME_WORK_END;
+}
+
+void
+cm_method_call_tostring(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
+
+  method_call_tostring_write(MC_RESULT, MC_ARG(0), consts.str__write);
+}
+
+void
+cm_method_call_write(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
+
+  FRAME_WORK_BEGIN(2) {
+    str_newc(&WORK(0), 1, 2, "\"");
+    method_call_tostring_write(&WORK(1), MC_ARG(0), consts.str__write);
+    str_newv(MC_RESULT, 2, &WORK(0));
   } FRAME_WORK_END;
 }
 
@@ -1255,7 +1274,7 @@ cm_block_tostring(void)
 
     str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
     str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "{");
-    inst_method_call(&ARRAYVAL(WORK(0))->data[2], consts.str_tostring, 1, &CAR(MC_ARG(0)));
+    inst_method_call(&ARRAYVAL(WORK(0))->data[2], consts.str__write, 1, &CAR(MC_ARG(0)));
     for (p = &ARRAYVAL(WORK(0))->data[3], q = CDR(MC_ARG(0)); q != 0; q = CDR(q)) {
       inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
       inst_method_call(p++, consts.str_tostring, 1, &CAR(q));
@@ -1563,6 +1582,7 @@ struct {
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_method_call_eval },
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_method_call_tostring },
+  { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_method_call_write },
 
   { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_evalc,    cm_block_eval },
   { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_block_tostring },
