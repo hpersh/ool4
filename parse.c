@@ -71,7 +71,7 @@ unsigned
 isspecial(unsigned c)
 {
   switch (c) {
-  case '\'':
+  case '"':
   case '`':
   case ',':
   case '(':
@@ -90,22 +90,27 @@ isspecial(unsigned c)
 }
 
 void
-tokbuf_append_char(struct tokbuf *tb, char c)
+tokbuf_append(struct tokbuf *tb, unsigned n, char *s)
 {
-  char     *p;
-  unsigned n;
-
-  if (tb->len >= tb->bufsize) {
-    n = tb->bufsize << 1;
-    p = mem_alloc(n, false);
+  unsigned nn = tb->len + n;
+  if (nn > tb->bufsize) {
+    unsigned k = round_up_to_power_of_2(nn);
+    char *p = mem_alloc(k, false);
     memcpy(p, tb->buf, tb->len);
     mem_free(tb->buf, tb->bufsize);
     
-    tb->bufsize = n;
+    tb->bufsize = k;
     tb->buf     = p;
   }
   
-  tb->buf[tb->len++] = c;
+  memcpy(tb->buf + tb->len, s, n);
+  tb->len += n;
+}
+
+void
+tokbuf_append_char(struct tokbuf *tb, char c)
+{
+  tokbuf_append(tb, 1, &c);
 }
 
 unsigned
@@ -425,7 +430,7 @@ parse_token(inst_t *dst)
   
   if (tb->len == 2) {
     switch (tb->buf[0]) {
-    case '\'':
+    case '"':
       return (parse_quote(dst));
 
     case '(':
@@ -443,17 +448,9 @@ parse_token(inst_t *dst)
   }
 
   if (tb->len >= 2 && tb->buf[0] == '`') {
-    FRAME_WORK_BEGIN(1) {
-      tb->buf[tb->len - 2] = 0;
-      str_newc(&WORK(0), 1, tb->len - 2, tb->buf + 1);
+    tb->buf[tb->len - 2] = 0;
+    str_newc(dst, 1, tb->len - 2, tb->buf + 1);
       
-      list_new(&WORK(0), WORK(0), 0);
-      
-      method_call_new(&WORK(0), consts.str_quote, WORK(0));
-      
-      inst_assign(dst, WORK(0));
-    } FRAME_WORK_END;
-
     return (true);
   }
 
