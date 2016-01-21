@@ -351,7 +351,7 @@ backtrace(void)
       inst_t   *q;
       for (q  = p->argv, n = p->argc; n > 0; --n, ++q) {
 	if (n < p->argc)  fprintf(stderr, ", ");
-	inst_method_call(&WORK(0), consts.str_tostring, 1, q);
+	inst_method_call(&WORK(0), consts.str__write, 1, q);
 	fprintf(stderr, "%s", STRVAL(WORK(0))->data);
       }
       
@@ -505,6 +505,12 @@ cm_obj_tostring(void)
   snprintf(buf, n, "<%s@%p>", STRVAL(cl_name)->data, MC_ARG(0));
 
   str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
+}
+
+void
+cm_obj_write(void)
+{
+  inst_method_call(MC_RESULT, consts.str_tostring, 1, &MC_ARG(0));
 }
 
 void
@@ -738,6 +744,50 @@ cm_str_tostring(void)
   if (MC_ARGC != 1)  error_argc();
 
   inst_assign(MC_RESULT, MC_ARG(0));
+}
+
+bool
+has_space(char *s)
+{
+  char c;
+  for ( ; c = *s; ++s) {
+    if (isspace(c))  return (true);
+  }
+
+  return (false);
+}
+
+void
+str__write(inst_t *dst, inst_t s)
+{
+  FRAME_WORK_BEGIN(3) {
+    str_newc(&WORK(0), 1, 2, "`");
+    inst_assign(&WORK(1), s);
+    str_newc(&WORK(2), 1, 2, "'");
+    str_newv(dst, 3, &WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_str__write(void)
+{
+  if (has_space(STRVAL(MC_ARG(0))->data)) {
+    str__write(MC_RESULT, MC_ARG(0));
+
+    return;
+  }
+
+  inst_assign(MC_RESULT, MC_ARG(0));
+}
+
+void
+cm_str_write(void)
+{
+  FRAME_WORK_BEGIN(2) {
+    str_newc(&WORK(0), 1, 2, "\"");
+    str__write(&WORK(1), MC_ARG(0));
+    str_newv(MC_RESULT, 2, &WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -1399,7 +1449,10 @@ struct {
   { &consts.str_system,      "#System" },
   { &consts.str_tostring,    "tostring" },
   { &consts.str_true,        "#true" },
-  { &consts.str_whilec,      "&while:" }
+  { &consts.str_whilec,      "&while:" },
+  { &consts.str__write,      "_write" },
+  { &consts.str_write,       "write" },
+  { &consts.str_writec,      "write:" }
 };
 
 struct {
@@ -1414,6 +1467,8 @@ struct {
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_whilec,   cm_obj_while },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_obj_tostring },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_obj_write },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_obj_write },
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc, cm_bool_and },
 
@@ -1423,6 +1478,8 @@ struct {
 
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_str_tostring },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_str__write },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },
 
   { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_pair_tostring },
 

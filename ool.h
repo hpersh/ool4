@@ -237,6 +237,9 @@ struct {
   inst_t str_tostring;
   inst_t str_true;
   inst_t str_whilec;
+  inst_t str__write;
+  inst_t str_write;
+  inst_t str_writec;
 } consts;
 
 inst_t inst_retain(inst_t inst);
