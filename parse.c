@@ -97,7 +97,7 @@ tokbuf_append_char(struct tokbuf *tb, char c)
 
   if (tb->len >= tb->bufsize) {
     n = tb->bufsize << 1;
-    p = mem_alloc(n);
+    p = mem_alloc(n, false);
     memcpy(p, tb->buf, tb->len);
     mem_free(tb->buf, tb->bufsize);
     

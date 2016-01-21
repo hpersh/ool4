@@ -63,7 +63,7 @@ list_next(struct list *item)
 struct list *list_insert(struct list *item, struct list *before);
 void        list_erase(struct list *item);
 
-void *mem_alloc(unsigned size);
+void *mem_alloc(unsigned size, bool clr);
 void mem_free(void *p, unsigned size);
 
 struct inst;
@@ -292,7 +292,7 @@ struct tokbuf {
 static inline void
 tokbuf_init(struct tokbuf *tb)
 {
-  tb->buf = (char *) mem_alloc(tb->bufsize = 16);
+  tb->buf = (char *) mem_alloc(tb->bufsize = 16, false);
   tb->len = 0;
 }
 

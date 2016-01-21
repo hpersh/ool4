@@ -152,7 +152,7 @@ mem_pages_free(void *p, unsigned npages)
 }
 
 void *
-mem_alloc(unsigned size)
+mem_alloc(unsigned size, bool clr)
 {
   if (size > MAX_BLK_SIZE)  return (mem_pages_alloc(page_size_align(size)));
 
@@ -179,6 +179,8 @@ mem_alloc(unsigned size)
   list_erase(p);
 
   ++blk_to_page(p)->blks_in_use;
+  
+  if (clr)  memset(p, 0, bi->size);
 
   return (p);
 }
@@ -291,10 +293,9 @@ frame_jmp(struct frame_jmp *fr, int code)
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
-  inst_t inst = (inst_t) mem_alloc(CLASSVAL(cl)->inst_size);
+  inst_t inst = (inst_t) mem_alloc(CLASSVAL(cl)->inst_size, true);
 
-  inst->ref_cnt = 0;
-  inst->inst_of = inst_retain(cl);
+  inst_assign(&inst->inst_of, cl);
   
   inst_assign(dst, inst);
 }
@@ -642,7 +643,7 @@ str_newc(inst_t *dst, unsigned argc, ...)
     va_end(ap);
     
     inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len);
+    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len, false);
 
     va_start(ap, argc);
 
@@ -673,7 +674,7 @@ str_newv(inst_t *dst, unsigned n, inst_t *data)
     ++len;
     
     inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len);
+    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len, false);
 
     for (p = data, k = n; k > 0; --k, ++p) {
       len = STRVAL(*p)->size - 1;
@@ -729,8 +730,8 @@ dptr_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc > 1);
 
-  CAR(inst) = inst_retain(va_arg(ap, inst_t));
-  CDR(inst) = inst_retain(va_arg(ap, inst_t));
+  inst_assign(&CAR(inst), va_arg(ap, inst_t));
+  inst_assign(&CDR(inst), va_arg(ap, inst_t));
   argc -= 2;
 
   inst_init_parent(inst, cl, argc, ap);
@@ -906,8 +907,7 @@ array_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
   --argc;
 
   ARRAYVAL(inst)->size = size;
-  ARRAYVAL(inst)->data = mem_alloc(s = size * sizeof(ARRAYVAL(inst)->data[0]));
-  memset(ARRAYVAL(inst)->data, 0, s);
+  ARRAYVAL(inst)->data = mem_alloc(s = size * sizeof(ARRAYVAL(inst)->data[0]), true);
 
   inst_init_parent(inst, cl, argc, ap);
 }
@@ -1250,7 +1250,7 @@ init(void)
   FRAME_WORK_BEGIN(1) {
     /* Pass 1 - Create metaclass */
 
-    consts.metaclass = (inst_t) mem_alloc(sizeof(struct inst_metaclass));
+    consts.metaclass = (inst_t) mem_alloc(sizeof(struct inst_metaclass), true);
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
 
     /* Pass 2 - Create classes */
