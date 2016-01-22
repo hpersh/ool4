@@ -733,6 +733,16 @@ str_equal(inst_t s1, inst_t s2)
 }
 
 void
+cm_str_hash(void)
+{
+  unsigned h;
+  char     *p, c;
+  for (h = 0, p = STRVAL(MC_ARG(0))->data; (c = *p) != 0; ++p)  h = 37 * h + c;
+
+  int_new(MC_RESULT, h);
+}
+
+void
 cm_str_eval(void)
 {
   if (MC_ARGC != 1)  error_argc();
@@ -1203,7 +1213,7 @@ array_to_list(inst_t *dst, unsigned n, inst_t *p)
 }
 
 void
-cm_array_write()
+cm_array_write(void)
 {
   FRAME_WORK_BEGIN(4) {
     array_to_list(&WORK(0), ARRAYVAL(MC_ARG(0))->size, ARRAYVAL(MC_ARG(0))->data);
@@ -1281,6 +1291,57 @@ void
 cm_dict_new(void)
 {
   dict_new(MC_RESULT, 32);
+}
+
+void
+cm_dict_at(void)
+{
+  inst_assign(MC_RESULT, dict_at(MC_ARG(0), MC_ARG(1)));
+}
+
+void
+cm_dict_atput(void)
+{
+  dict_at_put(MC_ARG(0), MC_ARG(1), MC_ARG(2));
+  
+  inst_assign(MC_RESULT, MC_ARG(2));
+}
+
+void
+cm_dict_del(void)
+{
+  dict_del(MC_ARG(0), MC_ARG(1));
+  
+  inst_assign(MC_RESULT, 0);
+}
+
+void
+dict_to_list(inst_t *dst, inst_t d)
+{
+  FRAME_WORK_BEGIN(1) {
+    inst_t   *p, *q;
+    unsigned n;
+    for (q = &WORK(0), p = ARRAYVAL(d)->data, n = ARRAYVAL(d)->size; n > 0; --n, ++p) {
+      inst_t r;
+      for (r = *p; r != 0; r = CDR(r)) {
+	list_new(q, CAR(r), 0);
+	q = &CDR(*q);
+      }
+    }
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_dict_write(void)
+{
+  FRAME_WORK_BEGIN(4) {
+    dict_to_list(&WORK(0), MC_ARG(0));
+    str_newc(&WORK(1), 1, 19, "[#Dictionary new: ");
+    inst_method_call(&WORK(2), MC_SEL, 1, &WORK(0));
+    str_newc(&WORK(3), 1, 2, "]");
+    str_newv(MC_RESULT, 3, &WORK(1));
+  } FRAME_WORK_END;
 }
 
 void
@@ -1586,6 +1647,7 @@ struct {
   { &consts.str_boolean,     "#Boolean" },
   { &consts.str_block,       "#Block" },
   { &consts.str_code_method, "#Code_Method" },
+  { &consts.str_delc,        "del:" },
   { &consts.str_dictionary,  "#Dictionary" },
   { &consts.str_dptr,        "#Dptr" },
   { &consts.str_environment, "#Environment" },
@@ -1593,6 +1655,7 @@ struct {
   { &consts.str_eval,        "eval" },
   { &consts.str_evalc,       "eval:" },
   { &consts.str_false,       "#false" },
+  { &consts.str_hash,        "hash" },
   { &consts.str_integer,     "#Integer" },
   { &consts.str_list,        "#List" },
   { &consts.str_ltc,         "lt:" },
@@ -1637,6 +1700,7 @@ struct {
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_hash,     cm_str_hash },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_str_tostring },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_str__write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },
@@ -1667,6 +1731,12 @@ struct {
   { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_array_write },
 
   { &consts.cl_dict, CLASSVAL_OFS(cl_methods), &consts.str_new, cm_dict_new },
+
+  { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_atc,      cm_dict_at },
+  { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc, cm_dict_atput },
+  { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_delc,     cm_dict_del },
+  { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_dict_write },
+  { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_dict_write },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },

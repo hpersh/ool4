@@ -212,6 +212,7 @@ struct {
   inst_t str_boolean;
   inst_t str_block;
   inst_t str_code_method;
+  inst_t str_delc;
   inst_t str_dictionary;
   inst_t str_dptr;
   inst_t str_environment;
