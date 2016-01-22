@@ -416,6 +416,18 @@ error_bad_arg(inst_t arg)
 }
 
 void
+cm_cl_cl_methods(void)
+{
+  inst_assign(MC_RESULT, CLASSVAL(MC_ARG(0))->cl_methods);
+}
+
+void
+cm_cl_inst_methods(void)
+{
+  inst_assign(MC_RESULT, CLASSVAL(MC_ARG(0))->inst_methods);
+}
+
+void
 cm_cl_tostring(void)
 {
   if (MC_ARGC != 1)  error_argc();
@@ -586,6 +598,18 @@ int_new(inst_t *dst, intval_t val)
 }
 
 void
+cm_int_hash(void)
+{
+  inst_assign(MC_RESULT, MC_ARG(0));
+}
+
+void
+cm_int_equal(void)
+{
+  bool_new(MC_RESULT, INTVAL(MC_ARG(0)) == INTVAL(MC_ARG(1)));
+}
+
+void
 cm_int_add(void)
 {
   if (MC_ARGC != 2)  error_argc();
@@ -740,6 +764,12 @@ cm_str_hash(void)
   for (h = 0, p = STRVAL(MC_ARG(0))->data; (c = *p) != 0; ++p)  h = 37 * h + c;
 
   int_new(MC_RESULT, h);
+}
+
+void
+cm_str_equal(void)
+{
+  bool_new(MC_RESULT, str_equal(MC_ARG(0), MC_ARG(1)));
 }
 
 void
@@ -1646,6 +1676,7 @@ struct {
   { &consts.str_array,       "#Array" },
   { &consts.str_boolean,     "#Boolean" },
   { &consts.str_block,       "#Block" },
+  { &consts.str_class_methods, "class-methods" },
   { &consts.str_code_method, "#Code_Method" },
   { &consts.str_delc,        "del:" },
   { &consts.str_dictionary,  "#Dictionary" },
@@ -1656,6 +1687,7 @@ struct {
   { &consts.str_evalc,       "eval:" },
   { &consts.str_false,       "#false" },
   { &consts.str_hash,        "hash" },
+  { &consts.str_instance_methods, "instance-methods" },
   { &consts.str_integer,     "#Integer" },
   { &consts.str_list,        "#List" },
   { &consts.str_ltc,         "lt:" },
@@ -1684,7 +1716,9 @@ struct {
   inst_t   *sel;
   void     (*func)(void);
 } init_method_tbl[] = {
-  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_cl_tostring },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_class_methods,    cm_cl_cl_methods },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_instance_methods, cm_cl_inst_methods },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_tostring,         cm_cl_tostring },
 
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_quote,    cm_obj_quote },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
@@ -1693,14 +1727,18 @@ struct {
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_obj_write },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_obj_write },
 
-  { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc, cm_bool_and },
+  { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc,     cm_bool_and },
+  { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_bool_tostring },
 
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_hash,     cm_int_hash },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_addc,     cm_int_add },
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_int_equal },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_ltc,      cm_int_lt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_hash,     cm_str_hash },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_str_equal },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_str_tostring },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_str__write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },

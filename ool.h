@@ -211,6 +211,7 @@ struct {
   inst_t str_array;
   inst_t str_boolean;
   inst_t str_block;
+  inst_t str_class_methods;
   inst_t str_code_method;
   inst_t str_delc;
   inst_t str_dictionary;
@@ -221,6 +222,7 @@ struct {
   inst_t str_evalc;
   inst_t str_false;
   inst_t str_hash;
+  inst_t str_instance_methods;
   inst_t str_integer; 
   inst_t str_list;
   inst_t str_ltc;
