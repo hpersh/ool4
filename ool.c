@@ -498,6 +498,12 @@ cm_obj_tostring(void)
 {
   if (MC_ARGC != 1)  error_argc();
   
+  if (MC_ARG(0) == 0) {
+    str_newc(MC_RESULT, 1, 5, "#nil");
+
+    return;
+  }
+
   inst_t cl_name = CLASSVAL(inst_of(MC_ARG(0)))->name;
   unsigned n = 1 + (STRVAL(cl_name)->size - 1) + 1 + 18 + 1 + 1;
   char buf[n];
@@ -832,44 +838,20 @@ cm_pair_eval(void)
 }
 
 void
-pair_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
+cm_pair_tostring_write(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(5) {
     str_newc(&WORK(0), 1, 2, "(");
-    inst_method_call(&WORK(1), sel, 1, &CAR(MC_ARG(0)));
+    inst_method_call(&WORK(1), MC_SEL, 1, &CAR(MC_ARG(0)));
     str_newc(&WORK(2), 1, 3, ", ");
-    inst_method_call(&WORK(3), sel, 1, &CDR(MC_ARG(0)));
+    inst_method_call(&WORK(3), MC_SEL, 1, &CDR(MC_ARG(0)));
     str_newc(&WORK(4), 1, 2, ")");
 
     str_newv(MC_RESULT, 5, &WORK(0));
   } FRAME_WORK_END;
-}
-
-void
-cm_pair_tostring(void)
-{
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
-
-  pair_tostring_write(MC_RESULT, MC_ARG(0), consts.str_tostring);
-}
-
-void
-cm_pair__write(void)
-{
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
-
-  pair_tostring_write(MC_RESULT, MC_ARG(0), consts.str__write);
-}
-
-void
-cm_pair_write(void)
-{
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
-
-  pair_tostring_write(MC_RESULT, MC_ARG(0), consts.str_write);
 }
 
 void
@@ -907,10 +889,13 @@ cm_list_eval(void)
 }
 
 void
-list_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
+cm_list_tostring_write(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(1) {
-    unsigned n = list_len(inst);
+    unsigned n = list_len(MC_ARG(0));
     unsigned nn = (n == 0) ? 2 : (2 * n + 1), k;
     inst_t *p, q;
 
@@ -918,45 +903,18 @@ list_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
 
     str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
     str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "(");
-    for (p = &ARRAYVAL(WORK(0))->data[2], q = inst; q != 0; q = CDR(q)) {
-      if (q != inst) {
+    for (p = &ARRAYVAL(WORK(0))->data[2], q = MC_ARG(0); q != 0; q = CDR(q)) {
+      if (q != MC_ARG(0)) {
 	inst_assign(p, ARRAYVAL(WORK(0))->data[0]);
 	++p;
       }
-      inst_method_call(p, sel, 1, &CAR(q));
+      inst_method_call(p, MC_SEL, 1, &CAR(q));
       ++p;
     }
     str_newc(p, 1, 2, ")");
 
-    str_newv(dst, nn, &ARRAYVAL(WORK(0))->data[1]);
+    str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
   } FRAME_WORK_END;
-}
-
-void
-cm_list_tostring(void)
-{
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
-
-  list_tostring_write(MC_RESULT, MC_ARG(0), consts.str_tostring);
-}
-
-void
-cm_list__write(void)
-{
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
-
-  list_tostring_write(MC_RESULT, MC_ARG(0), consts.str__write);
-}
-
-void
-cm_list_write(void)
-{
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
-
-  list_tostring_write(MC_RESULT, MC_ARG(0), consts.str_write);
 }
 
 void
@@ -1146,7 +1104,114 @@ array_new(inst_t *dst, unsigned size)
 void
 cm_array_new(void)
 {
+  error("Method not found");
+}
+
+void
+cm_array_newc(void)
+{
   if (MC_ARGC != 2)  error_argc();
+
+  if (inst_of(MC_ARG(1)) == consts.cl_int) {
+    intval_t size = INTVAL(MC_ARG(1));
+
+    if (size <= 0)  error_bad_arg(MC_ARG(1));
+
+    array_new(MC_RESULT, size);
+    
+    return;
+  }
+
+  if (inst_of(MC_ARG(1)) == consts.cl_array) {
+    FRAME_WORK_BEGIN(1) {
+      unsigned n = ARRAYVAL(MC_ARG(1))->size;
+      array_new(&WORK(0), n);
+
+      inst_t   *p, *q;
+      for (p = ARRAYVAL(WORK(0))->data, q = ARRAYVAL(MC_ARG(1))->data; n > 0; ++p, ++q) {
+	inst_assign(p, *q);
+      }
+
+      inst_assign(MC_RESULT, WORK(0));
+    } FRAME_WORK_END;
+
+    return;
+  }
+
+  if (inst_of(MC_ARG(1)) == consts.cl_list) {
+    FRAME_WORK_BEGIN(1) {
+      unsigned n = list_len(MC_ARG(1));
+      if (n == 0)  error_bad_arg(MC_ARG(1));
+      array_new(&WORK(0), n);
+
+      inst_t *p, q;
+      for (p = ARRAYVAL(WORK(0))->data, q = MC_ARG(1); q != 0; ++p, q = CDR(q)) {
+	inst_assign(p, CAR(q));
+      }
+
+      inst_assign(MC_RESULT, WORK(0));
+    } FRAME_WORK_END;
+
+    return;
+  }
+
+  error_bad_arg(MC_ARG(1));
+}
+
+inst_t *
+array_idx(inst_t a, inst_t idx)
+{
+  intval_t i = INTVAL(idx);
+  if (i < 0 || i >= ARRAYVAL(a)->size)  error("Range error");
+
+  return (&ARRAYVAL(a)->data[i]);
+}
+
+void
+cm_array_at(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_array)  error_bad_arg(MC_ARG(0));
+  if (inst_of(MC_ARG(1)) != consts.cl_int)  error_bad_arg(MC_ARG(1));
+
+  inst_assign(MC_RESULT, *array_idx(MC_ARG(0), MC_ARG(1)));
+}
+
+void
+cm_array_atput(void)
+{
+  if (MC_ARGC != 3)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_array)  error_bad_arg(MC_ARG(0));
+  if (inst_of(MC_ARG(1)) != consts.cl_int)  error_bad_arg(MC_ARG(1));
+
+  inst_assign(array_idx(MC_ARG(0), MC_ARG(1)), MC_ARG(2));
+
+  inst_assign(MC_RESULT, MC_ARG(2));
+}
+
+void
+array_to_list(inst_t *dst, unsigned n, inst_t *p)
+{
+  FRAME_WORK_BEGIN(1) {
+    inst_t *q;
+    for (q = &WORK(0); n > 0; --n, ++p) {
+      list_new(q, *p, 0);
+      q = &CDR(*q);
+    }
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_array_write()
+{
+  FRAME_WORK_BEGIN(4) {
+    array_to_list(&WORK(0), ARRAYVAL(MC_ARG(0))->size, ARRAYVAL(MC_ARG(0))->data);
+    str_newc(&WORK(1), 1, 14, "[#Array new: ");
+    inst_method_call(&WORK(2), MC_SEL, 1, &WORK(0));
+    str_newc(&WORK(3), 1, 2, "]");
+    str_newv(MC_RESULT, 3, &WORK(1));
+  } FRAME_WORK_END;
 }
 
 void
@@ -1210,6 +1275,12 @@ dict_del(inst_t dict, inst_t key)
   inst_assign(p, CDR(*p));
 
   --SETVAL(dict)->cnt;
+}
+
+void
+cm_dict_new(void)
+{
+  dict_new(MC_RESULT, 32);
 }
 
 void
@@ -1571,14 +1642,14 @@ struct {
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },
 
   { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_pair_eval },
-  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_pair_tostring },
-  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_pair__write },
-  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_pair_write },
+  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_pair_tostring_write },
+  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_pair_tostring_write },
+  { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_pair_tostring_write },
 
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_list_eval },
-  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring },
-  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_list__write },
-  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_list_write },
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring_write },
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_list_tostring_write },
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_list_tostring_write },
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_method_call_eval },
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_method_call_tostring },
@@ -1586,6 +1657,16 @@ struct {
 
   { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_evalc,    cm_block_eval },
   { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_block_tostring },
+
+  { &consts.cl_array, CLASSVAL_OFS(cl_methods), &consts.str_new,  cm_array_new },
+  { &consts.cl_array, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_array_newc },
+
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_atc,      cm_array_at },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc, cm_array_atput },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_array_write },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_array_write },
+
+  { &consts.cl_dict, CLASSVAL_OFS(cl_methods), &consts.str_new, cm_dict_new },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
@@ -1653,6 +1734,8 @@ init(void)
     module_new(&consts.module_main, consts.str_main, 0);
     dict_at_put(consts.module_main, consts.str_main, consts.module_main);
     dict_at_put(consts.module_main, consts.str_metaclass, consts.metaclass);
+    str_newc(&WORK(0), 1, 5, "#nil");
+    dict_at_put(consts.module_main, WORK(0), 0);
     bool_new(&WORK(0), 1);
     dict_at_put(consts.module_main, consts.str_true, WORK(0));
     bool_new(&WORK(0), 0);

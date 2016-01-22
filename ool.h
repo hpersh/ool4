@@ -455,6 +455,7 @@ frame_method_call_pop(void)
 #define MC_RESULT  (mcfp->result)
 #define MC_ARGC    (mcfp->argc)
 #define MC_ARG(i)  (mcfp->argv[i])
+#define MC_SEL     (mcfp->sel)
 
 #define FRAME_METHOD_CALL_END	\
     frame_method_call_pop();    \
