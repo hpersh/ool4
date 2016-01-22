@@ -81,6 +81,7 @@ isspecial(unsigned c)
   case '{':
   case '}':
   case '=':
+  case '.':
     return (true);
 
   default:
@@ -288,7 +289,6 @@ parse_method_call(inst_t *dst)
   FRAME_WORK_BEGIN(5) {
     unsigned i;
     inst_t   *p;
-    bool     assignf = false, definef = false;
 
     for (i = 0, p = &WORK(1); ; ++i) {
       if (!token_get())  break;
@@ -305,15 +305,6 @@ parse_method_call(inst_t *dst)
 	}
       }
       
-      if (i == 1 && tb->len >= 2 && tb->len <= 3 && tb->buf[0] == '=') {
-	assignf = true;
-	definef = tb->buf[1] == '!';
-
-	continue;
-      }
-
-      if (assignf && i > 2)  break;
-
       if (!parse_token(&WORK(2)))  break;
       
       if (i & 1) {
@@ -335,15 +326,34 @@ parse_method_call(inst_t *dst)
     }
 
     if (result) {
-      if (!assignf) {
-	method_call_new(dst, WORK(0), WORK(1));
-      } else {
+      bool deff = false;
+
+      if (i == 3
+	  && (strcmp(STRVAL(WORK(0))->data, "=") == 0
+	      || (deff = (strcmp(STRVAL(WORK(0))->data, "=!") == 0))
+	      )
+	  ) {
 	list_new(&WORK(3), CAR(WORK(1)), 0);
 	method_call_new(&WORK(3), consts.str_quote, WORK(3));
 	list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
 	list_new(&WORK(4), WORK(3), WORK(4));
 	list_new(&WORK(4), consts.cl_env, WORK(4));
-	method_call_new(dst, definef ? consts.str_atc_defc : consts.str_atc_putc, WORK(4));
+	method_call_new(dst, deff ? consts.str_atc_defc : consts.str_atc_putc, WORK(4));
+      } else if (i == 3 && strcmp(STRVAL(WORK(0))->data, ".") == 0) {
+	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+	method_call_new(&WORK(3), consts.str_quote, WORK(3));
+	list_new(&WORK(3), WORK(3), 0);
+	list_new(&WORK(3), CAR(WORK(1)), WORK(3));
+	method_call_new(dst, consts.str_atc, WORK(3));
+      } else if (i == 5 && strcmp(STRVAL(WORK(0))->data, ".=") == 0) {
+	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+	method_call_new(&WORK(3), consts.str_quote, WORK(3));
+	list_new(&WORK(4), CAR(CDR(CDR(WORK(1)))), 0);
+	list_new(&WORK(4), WORK(3), WORK(4));
+	list_new(&WORK(4), CAR(WORK(1)), WORK(4));
+	method_call_new(dst, consts.str_atc_putc, WORK(4));
+      } else {
+	method_call_new(dst, WORK(0), WORK(1));
       }
     }
   } FRAME_WORK_END;
@@ -397,61 +407,11 @@ parse_block(inst_t *dst)
 }
 
 unsigned
-parse_dot(inst_t *dst)
-{
-  unsigned result;
-
-  FRAME_WORK_BEGIN(1) {
-    result = parse(&WORK(0));
-    if (result) {
-      list_new(&WORK(0), WORK(0), 0);
-      method_call_new(&WORK(0), consts.str_quote, WORK(0));
-      
-      list_new(&WORK(0), WORK(0), 0);
-      list_new(&WORK(0), *dst, WORK(0));
-      method_call_new(&WORK(0), consts.str_atc, WORK(0));
-      
-      inst_assign(dst, WORK(0));
-    }
-  } FRAME_WORK_END;
-
-  return (result);
-}
-
-unsigned
 parse_str(inst_t *dst)
 {
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
   
-  FRAME_WORK_BEGIN(2) {
-    char     *p, *q;
-    unsigned i, n, k;
-
-    for (i = 0, p = tb->buf, n = tb->len; n > 0; n -= k, p += k, ++i) {
-      q = index(p, '.');
-      if (q == 0) {
-	k = n;
-      } else {
-	k = q + 1 - p;
-	*q = 0;
-      }
-      
-      str_newc(&WORK(1), 1, k, p);
-      
-      if (i == 0) {
-	inst_assign(&WORK(0), WORK(1));
-      } else {
-	list_new(&WORK(1), WORK(1), 0);
-	method_call_new(&WORK(1), consts.str_quote, WORK(1));
-	
-	list_new(&WORK(1), WORK(1), 0);
-	list_new(&WORK(1), WORK(0), WORK(1));
-	method_call_new(&WORK(0), consts.str_atc, WORK(1));
-      }
-    }
-    
-    inst_assign(dst, WORK(0));
-  } FRAME_WORK_END;
+  str_newc(dst, 1, tb->len, tb->buf);
 
   return (true);
 }
