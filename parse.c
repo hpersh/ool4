@@ -80,6 +80,7 @@ isspecial(unsigned c)
   case ']':
   case '{':
   case '}':
+  case '=':
     return (true);
 
   default:
@@ -155,6 +156,20 @@ token_get(void)
 	goto done;
       }
     }
+  }
+
+  if (c == '=') {
+    c = stream_getc(str);
+
+    if (c == '!') {
+      tokbuf_append_char(tb, c);
+    } else if (c >= 0) {
+      stream_ungetc(str, c);
+    }
+
+    result = true;
+
+    goto done;
   }
 
   if (isspecial(c)) {
@@ -270,9 +285,10 @@ parse_method_call(inst_t *dst)
   unsigned result = false;
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
 
-  FRAME_WORK_BEGIN(3) {
+  FRAME_WORK_BEGIN(5) {
     unsigned i;
-    inst_t    *p;
+    inst_t   *p;
+    bool     assignf = false, definef = false;
 
     for (i = 0, p = &WORK(1); ; ++i) {
       if (!token_get())  break;
@@ -289,6 +305,15 @@ parse_method_call(inst_t *dst)
 	}
       }
       
+      if (i == 1 && tb->len >= 2 && tb->len <= 3 && tb->buf[0] == '=') {
+	assignf = true;
+	definef = tb->buf[1] == '!';
+
+	continue;
+      }
+
+      if (assignf && i > 2)  break;
+
       if (!parse_token(&WORK(2)))  break;
       
       if (i & 1) {
@@ -309,7 +334,18 @@ parse_method_call(inst_t *dst)
       p = &CDR(*p);
     }
 
-    if (result)  method_call_new(dst, WORK(0), WORK(1));
+    if (result) {
+      if (!assignf) {
+	method_call_new(dst, WORK(0), WORK(1));
+      } else {
+	list_new(&WORK(3), CAR(WORK(1)), 0);
+	method_call_new(&WORK(3), consts.str_quote, WORK(3));
+	list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
+	list_new(&WORK(4), WORK(3), WORK(4));
+	list_new(&WORK(4), consts.cl_env, WORK(4));
+	method_call_new(dst, definef ? consts.str_atc_defc : consts.str_atc_putc, WORK(4));
+      }
+    }
   } FRAME_WORK_END;
 
   return (result);
