@@ -28,8 +28,6 @@ list_erase(struct list *item)
 enum {
   MEM_PAGE_SIZE_LOG2 = 12,
   MEM_PAGE_SIZE      = 1 << MEM_PAGE_SIZE_LOG2,
-  MIN_BLK_SIZE_LOG2  = 4,
-  MIN_BLK_SIZE       = 1 << MIN_BLK_SIZE_LOG2,
   MAX_BLK_SIZE_LOG2  = 10,
   MAX_BLK_SIZE       = 1 << MAX_BLK_SIZE_LOG2
 };

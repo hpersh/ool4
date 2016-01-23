@@ -63,6 +63,11 @@ list_next(struct list *item)
 struct list *list_insert(struct list *item, struct list *before);
 void        list_erase(struct list *item);
 
+enum {
+  MIN_BLK_SIZE_LOG2  = 4,
+  MIN_BLK_SIZE       = 1 << MIN_BLK_SIZE_LOG2
+};
+
 void *mem_alloc(unsigned size, bool clr);
 void mem_free(void *p, unsigned size);
 
@@ -310,7 +315,7 @@ struct tokbuf {
 static inline void
 tokbuf_init(struct tokbuf *tb)
 {
-  tb->buf = (char *) mem_alloc(tb->bufsize = 16, false);
+  tb->buf = (char *) mem_alloc(tb->bufsize = MIN_BLK_SIZE, false);
   tb->len = 0;
 }
 
