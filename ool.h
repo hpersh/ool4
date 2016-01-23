@@ -132,6 +132,7 @@ struct inst_dptr {
 #define CDR(x)  (((struct inst_dptr *)(x))->val->cdr)
 void pair_new(inst_t *dst, inst_t car, inst_t cdr);
 void list_new(inst_t *dst, inst_t car, inst_t cdr);
+unsigned list_len(inst_t li);
 
 struct inst_dptr_cnt {
   struct inst_dptr base[1];
@@ -219,6 +220,8 @@ struct {
   inst_t str_array;
   inst_t str_boolean;
   inst_t str_block;
+  inst_t str_car;
+  inst_t str_cdr;
   inst_t str_class_methods;
   inst_t str_code_method;
   inst_t str_delc;

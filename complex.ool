@@ -1,0 +1,17 @@
+
+[#Metaclass new: "Complex parent: #Object instance-variables: "(re im)]
+
+[[Complex class-methods] @ new: =
+	  {(cl args) [z =! [[[[#Object class-methods] @ new] cdr] eval: (cl)]]
+	             [z @ re = [args car]]
+		     [z @ im = [args cdr]]
+		     z
+	  }
+]
+
+[[Complex class-methods] @ new = {(cl) [Complex new: (0, 0)]}]
+
+[z =! [Complex new]]
+
+[z @ re]
+[z @ im]

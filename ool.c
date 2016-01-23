@@ -278,6 +278,9 @@ frame_jmp(struct frame_jmp *fr, int code)
     case FRAME_TYPE_INPUT:
       frame_input_pop();
       break;
+    case FRAME_TYPE_BLOCK:
+      frame_block_pop();
+      break;
     default:
       assert(0);
     }
@@ -689,6 +692,36 @@ code_method_new(inst_t *dst, void (*func)(void))
   inst_init(*dst, 1, func);
 }
 
+static inline bool
+is_list(inst_t inst)
+{
+  return (inst == 0 || inst_of(inst) == consts.cl_list);
+}
+
+void
+cm_code_method_eval(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_code_method) error_bad_arg(MC_ARG(0));
+  if (!is_list(MC_ARG(1)))                         error_bad_arg(MC_ARG(1));
+  
+  unsigned nargs = list_len(MC_ARG(1));
+  FRAME_WORK_BEGIN(nargs) {
+    inst_t   *p, q;
+    unsigned n;
+    for (p = &WORK(0), q = MC_ARG(1), n = nargs; n > 0; --n, ++p, q = CDR(q)) {
+      list_new(p, CAR(q), 0);
+      p = &CDR(*p);
+    }
+
+    void (*f)(void) = CODEMETHODVAL(MC_ARG(0));
+    
+    FRAME_METHOD_CALL_BEGIN(MC_RESULT, 0, 0, nargs, &WORK(0)) {
+      (*f)();
+    } FRAME_METHOD_CALL_END;
+  } FRAME_WORK_END;
+}
+
 void
 str_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
@@ -897,6 +930,24 @@ dptr_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
   (*func)(CDR(inst));
 
   inst_walk_parent(inst, cl, func);
+}
+
+void
+cm_dptr_car(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_dptr))  error_bad_arg(MC_ARG(0));
+
+  inst_assign(MC_RESULT, CAR(MC_ARG(0)));
+}
+
+void
+cm_dptr_cdr(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_dptr))  error_bad_arg(MC_ARG(0));
+
+  inst_assign(MC_RESULT, CDR(MC_ARG(0)));
 }
 
 void
@@ -1737,6 +1788,20 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
       (*CODEMETHODVAL(f))();
       goto done;
     }
+    if (cl == consts.cl_block) {
+      FRAME_WORK_BEGIN(2) {
+	inst_assign(&WORK(0), f);
+	inst_t *p;
+	for (p = &WORK(1); argc > 0; --argc, ++argv) {
+	  list_new(p, *argv, 0);
+	  p = &CDR(*p);
+	}
+
+	inst_method_call(MC_RESULT, consts.str_evalc, 2, &WORK(0));
+      } FRAME_WORK_END;
+
+      goto done;
+    }
     
     error("Bad method");
 
@@ -1782,6 +1847,8 @@ struct {
   { &consts.str_array,       "#Array" },
   { &consts.str_boolean,     "#Boolean" },
   { &consts.str_block,       "#Block" },
+  { &consts.str_car,         "car" },
+  { &consts.str_cdr,         "cdr" },
   { &consts.str_class_methods, "class-methods" },
   { &consts.str_code_method, "#Code_Method" },
   { &consts.str_delc,        "del:" },
@@ -1856,6 +1923,9 @@ struct {
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_str__write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },
 
+  { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_car, cm_dptr_car },
+  { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_cdr, cm_dptr_cdr },
+
   { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_pair_eval },
   { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_pair_tostring_write },
   { &consts.cl_pair, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_pair_tostring_write },
@@ -1865,6 +1935,8 @@ struct {
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring_write },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_list_tostring_write },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_list_tostring_write },
+
+  { &consts.cl_code_method, CLASSVAL_OFS(inst_methods), &consts.str_evalc, cm_code_method_eval },
 
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_method_call_eval },
   { &consts.cl_method_call, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_method_call_tostring },
