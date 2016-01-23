@@ -207,6 +207,7 @@ struct {
   inst_t str_andc;
   inst_t str_atc;
   inst_t str_atc_defc;
+  inst_t str_atc_lengthc;
   inst_t str_atc_putc;
   inst_t str_array;
   inst_t str_boolean;

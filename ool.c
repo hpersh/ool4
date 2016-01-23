@@ -600,12 +600,19 @@ int_new(inst_t *dst, intval_t val)
 void
 cm_int_hash(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
 void
 cm_int_equal(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));
+
   bool_new(MC_RESULT, INTVAL(MC_ARG(0)) == INTVAL(MC_ARG(1)));
 }
 
@@ -743,7 +750,9 @@ str_hash(inst_t s)
   unsigned result, n;
   char     *p;
   
-  for (result = 0, p = STRVAL(s)->data, n = STRVAL(s)->size; n > 0; --n, ++p)  result += *p;
+  for (result = 0, p = STRVAL(s)->data, n = STRVAL(s)->size; n > 1; --n, ++p) {
+    result = 37 * result + *p;
+  }
 
   return (result);
 }
@@ -759,16 +768,19 @@ str_equal(inst_t s1, inst_t s2)
 void
 cm_str_hash(void)
 {
-  unsigned h;
-  char     *p, c;
-  for (h = 0, p = STRVAL(MC_ARG(0))->data; (c = *p) != 0; ++p)  h = 37 * h + c;
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
 
-  int_new(MC_RESULT, h);
+  int_new(MC_RESULT, str_hash(MC_ARG(0)));
 }
 
 void
 cm_str_equal(void)
 {
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_str))  error_bad_arg(MC_ARG(1));
+
   bool_new(MC_RESULT, str_equal(MC_ARG(0), MC_ARG(1)));
 }
 
@@ -776,6 +788,7 @@ void
 cm_str_eval(void)
 {
   if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
 
   FRAME_WORK_BEGIN(2) {
     inst_assign(&WORK(0), consts.cl_env);
@@ -788,6 +801,7 @@ void
 cm_str_tostring(void)
 {
   if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
 
   inst_assign(MC_RESULT, MC_ARG(0));
 }
@@ -817,6 +831,9 @@ str__write(inst_t *dst, inst_t s)
 void
 cm_str__write(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+
   if (has_space(STRVAL(MC_ARG(0))->data)) {
     str__write(MC_RESULT, MC_ARG(0));
 
@@ -829,6 +846,9 @@ cm_str__write(void)
 void
 cm_str_write(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(2) {
     str_newc(&WORK(0), 1, 2, "\"");
     str__write(&WORK(1), MC_ARG(0));
@@ -870,6 +890,9 @@ pair_new(inst_t *dst, inst_t car, inst_t cdr)
 void
 cm_pair_eval(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(2) {
     inst_method_call(&WORK(0), consts.str_eval, 1, &CAR(MC_ARG(0)));
     inst_method_call(&WORK(1), consts.str_eval, 1, &CDR(MC_ARG(0)));
@@ -917,6 +940,9 @@ list_len(inst_t li)
 void
 cm_list_eval(void)
 {
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
   FRAME_WORK_BEGIN(2) {
     inst_t *p, q;
     for (p = &WORK(0), q = MC_ARG(0); q != 0; q = CDR(q)) {
@@ -1198,11 +1224,27 @@ cm_array_newc(void)
   error_bad_arg(MC_ARG(1));
 }
 
+bool
+slice(intval_t *ofs, intval_t *len, intval_t size)
+{
+  if (*ofs < 0) {
+    *ofs = size + *ofs;
+  }
+  if (*len < 0) {
+    *ofs += *len;
+    *len = -*len;
+  }
+
+  return (*ofs >= 0 && (*ofs + *len) <= size);
+}
+
+
 inst_t *
 array_idx(inst_t a, inst_t idx)
 {
-  intval_t i = INTVAL(idx);
-  if (i < 0 || i >= ARRAYVAL(a)->size)  error("Range error");
+  intval_t i = INTVAL(idx), len = 1;
+
+  if (!slice(&i, &len, ARRAYVAL(a)->size))  error("Range error");
 
   return (&ARRAYVAL(a)->data[i]);
 }
@@ -1227,6 +1269,27 @@ cm_array_atput(void)
   inst_assign(array_idx(MC_ARG(0), MC_ARG(1)), MC_ARG(2));
 
   inst_assign(MC_RESULT, MC_ARG(2));
+}
+
+void
+cm_array_slice(void)
+{
+  if (MC_ARGC != 3)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_array)  error_bad_arg(MC_ARG(0));
+  if (inst_of(MC_ARG(1)) != consts.cl_int)  error_bad_arg(MC_ARG(1));
+  if (inst_of(MC_ARG(2)) != consts.cl_int)  error_bad_arg(MC_ARG(2));
+
+  intval_t idx = INTVAL(MC_ARG(1)), len = INTVAL(MC_ARG(2));
+  if (!slice(&idx, &len, ARRAYVAL(MC_ARG(0))->size))  error("Range error");
+
+  FRAME_WORK_BEGIN(1) {
+    array_new(&WORK(0), len);
+    inst_t *p, *q;
+    for (p = ARRAYVAL(WORK(0))->data, q = &ARRAYVAL(MC_ARG(0))->data[idx]; len > 0; --len, ++p, ++q) {
+      inst_assign(p, *q);
+    }
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -1672,6 +1735,7 @@ struct {
   { &consts.str_andc,        "and:" },
   { &consts.str_atc,         "at:" },
   { &consts.str_atc_defc,    "at:def:" },
+  { &consts.str_atc_lengthc, "at:length:" },
   { &consts.str_atc_putc,    "at:put:" },
   { &consts.str_array,       "#Array" },
   { &consts.str_boolean,     "#Boolean" },
@@ -1763,10 +1827,11 @@ struct {
   { &consts.cl_array, CLASSVAL_OFS(cl_methods), &consts.str_new,  cm_array_new },
   { &consts.cl_array, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_array_newc },
 
-  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_atc,      cm_array_at },
-  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc, cm_array_atput },
-  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_array_write },
-  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_array_write },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_atc,         cm_array_at },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_atc_lengthc, cm_array_slice },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc,    cm_array_atput },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str__write,      cm_array_write },
+  { &consts.cl_array, CLASSVAL_OFS(inst_methods), &consts.str_write,       cm_array_write },
 
   { &consts.cl_dict, CLASSVAL_OFS(cl_methods), &consts.str_new, cm_dict_new },
 
