@@ -83,7 +83,7 @@ round_up_to_power_of_2(unsigned n)
   }
 }
 
-unsigned
+static inline unsigned
 page_size_align(unsigned size)
 {
   return (((size - 1) >> MEM_PAGE_SIZE_LOG2) + 1);
@@ -114,7 +114,7 @@ blk_size_align(unsigned size)
   return (bi);
 }
 
-struct mem_page *
+static inline struct mem_page *
 blk_to_page(void *p)
 {
   return ((struct mem_page *) (PTR_TO_UINT(p) & ~(MEM_PAGE_SIZE - 1)));
@@ -406,7 +406,7 @@ error_bad_arg(inst_t arg)
   fprintf(stderr, "Invalid argument: ");
 
   FRAME_WORK_BEGIN(1) {
-    inst_method_call(&WORK(0), consts.str_tostring, 1, &arg);
+    inst_method_call(&WORK(0), consts.str__write, 1, &arg);
     fprintf(stderr, "%s\n", STRVAL(WORK(0))->data);
   } FRAME_WORK_END;
 

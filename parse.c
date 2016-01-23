@@ -81,7 +81,7 @@ isspecial(unsigned c)
   case '{':
   case '}':
   case '=':
-  case '.':
+  case '@':
     return (true);
 
   default:
@@ -339,13 +339,13 @@ parse_method_call(inst_t *dst)
 	list_new(&WORK(4), WORK(3), WORK(4));
 	list_new(&WORK(4), consts.cl_env, WORK(4));
 	method_call_new(dst, deff ? consts.str_atc_defc : consts.str_atc_putc, WORK(4));
-      } else if (i == 3 && strcmp(STRVAL(WORK(0))->data, ".") == 0) {
+      } else if (i == 3 && strcmp(STRVAL(WORK(0))->data, "@") == 0) {
 	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
 	method_call_new(&WORK(3), consts.str_quote, WORK(3));
 	list_new(&WORK(3), WORK(3), 0);
 	list_new(&WORK(3), CAR(WORK(1)), WORK(3));
 	method_call_new(dst, consts.str_atc, WORK(3));
-      } else if (i == 5 && strcmp(STRVAL(WORK(0))->data, ".=") == 0) {
+      } else if (i == 5 && strcmp(STRVAL(WORK(0))->data, "@=") == 0) {
 	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
 	method_call_new(&WORK(3), consts.str_quote, WORK(3));
 	list_new(&WORK(4), CAR(CDR(CDR(WORK(1)))), 0);
