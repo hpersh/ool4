@@ -125,6 +125,7 @@ token_get(void)
 
   tb->len = 0;
 
+ again:
   for (;;) {
     c = stream_getc(str);
     if (c < 0) {
@@ -134,6 +135,22 @@ token_get(void)
       goto done;
     }
     if (!isspace(c))  break;
+  }
+
+  if (c == '%') {
+    for (;;) {
+      c = stream_getc(str);
+      if (c < 0) {
+	eof    = true;
+	result = true;
+	
+	goto done;
+      }
+
+      if (c == '\n')  break;
+    }
+    
+    goto again;
   }
   
   tokbuf_append_char(tb, c);
