@@ -529,6 +529,30 @@ cm_obj_write(void)
   inst_method_call(MC_RESULT, consts.str_tostring, 1, &MC_ARG(0));
 }
 
+inst_t *
+obj_inst_var(inst_t inst, inst_t var)
+{
+  inst_t p = dict_at(CLASSVAL(inst_of(inst))->inst_vars, var);
+  if (p == 0)  error("No such instance variable");
+
+  return ((inst_t *)((char *) inst + INTVAL(CDR(p))));
+}
+
+
+void
+cm_obj_at(void)
+{
+  inst_assign(MC_RESULT, *obj_inst_var(MC_ARG(0), MC_ARG(1)));
+}
+
+void
+cm_obj_atput(void)
+{
+  inst_assign(obj_inst_var(MC_ARG(0), MC_ARG(1)), MC_ARG(2));
+
+  inst_assign(MC_RESULT, MC_ARG(2));
+}
+
 void
 bool_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
@@ -1549,20 +1573,39 @@ metaclass_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 3);
 
-  inst_assign(&CLASSVAL(inst)->name, va_arg(ap, inst_t));
-  inst_assign(&CLASSVAL(inst)->module, MODULE_CUR);
-  inst_assign(&CLASSVAL(inst)->parent, va_arg(ap, inst_t));
-  strdict_new(&CLASSVAL(inst)->cl_vars, 32);
-  strdict_new(&CLASSVAL(inst)->cl_methods, 32);
-  strdict_new(&CLASSVAL(inst)->inst_vars, 32);
-  strdict_new(&CLASSVAL(inst)->inst_methods, 32);
+  FRAME_WORK_BEGIN(1) {
+    inst_assign(&CLASSVAL(inst)->name, va_arg(ap, inst_t));
+    inst_assign(&CLASSVAL(inst)->module, MODULE_CUR);
+    inst_assign(&CLASSVAL(inst)->parent, va_arg(ap, inst_t));
+    strdict_new(&CLASSVAL(inst)->cl_vars, 32);
+    strdict_new(&CLASSVAL(inst)->cl_methods, 32);
+    strdict_new(&CLASSVAL(inst)->inst_vars, 32);
+    strdict_new(&CLASSVAL(inst)->inst_methods, 32);
+    
+    unsigned ofs;
+    inst_t   p;
+    for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size, p = va_arg(ap, inst_t); p != 0; p = CDR(p), ofs += sizeof(inst_t)) {
+      int_new(&WORK(0), ofs);
+      dict_at_put(CLASSVAL(inst)->inst_vars, CAR(p), WORK(0));
+    }
+    CLASSVAL(inst)->inst_size = ofs;
+    CLASSVAL(inst)->walk = user_class_walk;
+    CLASSVAL(inst)->free = inst_free_parent;
+  } FRAME_WORK_END;
+  
+  argc -= 3;
 
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
+metaclass_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
+{
   unsigned ofs;
-  for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size; ; ) {
+  inst_t   *p;
+  for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size, p = (inst_t *)((char *) inst + ofs); ofs < CLASSVAL(inst)->inst_size; ofs += sizeof(inst_t), ++p) {
+    (*func)(*p);
   }
-  CLASSVAL(inst)->inst_size = ofs;
-  CLASSVAL(inst)->walk = user_class_walk;
-  CLASSVAL(inst)->free = inst_free_parent;
 }
 
 void
@@ -1571,6 +1614,7 @@ cm_metaclass_new(void)
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), consts.metaclass);
     inst_init(WORK(0), 3, MC_ARG(1), MC_ARG(2), MC_ARG(3));
+    dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
     inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
 }
@@ -1682,8 +1726,8 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
 
   inst_t f = 0, recvr = argv[0], cl = inst_of(recvr), found_cl;
 
-  if (cl == consts.metaclass)  f = method_find(sel, CLASSVAL_OFS(cl_methods), recvr, &found_cl);
-  if (f == 0)                  f = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
+  if (cl == 0 || cl == consts.metaclass)  f = method_find(sel, CLASSVAL_OFS(cl_methods), recvr, &found_cl);
+  if (cl != 0 && f == 0)                  f = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
 
   FRAME_METHOD_CALL_BEGIN(dst, found_cl, sel, argc, argv) {
     if (f == 0)  error("Method not found");
@@ -1759,6 +1803,7 @@ struct {
   { &consts.str_module,      "#Module" },
   { &consts.str_new,         "new" },
   { &consts.str_newc,        "new:" },
+  { &consts.str_newc_parentc_instancevariablesc, "new:parent:instance-variables:"},
   { &consts.str_object,      "#Object" },
   { &consts.str_pair,        "#Pair" },
   { &consts.str_quote,       "&quote" },
@@ -1778,9 +1823,13 @@ struct {
   inst_t   *sel;
   void     (*func)(void);
 } init_method_tbl[] = {
+  { &consts.metaclass, CLASSVAL_OFS(cl_methods), &consts.str_newc_parentc_instancevariablesc, cm_metaclass_new },
+
   { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_class_methods,    cm_cl_cl_methods },
   { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_instance_methods, cm_cl_inst_methods },
   { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_tostring,         cm_cl_tostring },
+
+  { &consts.cl_object, CLASSVAL_OFS(cl_methods), &consts.str_new, cm_obj_new },
 
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_quote,    cm_obj_quote },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
@@ -1788,6 +1837,8 @@ struct {
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_obj_tostring },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_obj_write },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_obj_write },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc,      cm_obj_at },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc, cm_obj_atput },
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc,     cm_bool_and },
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_bool_tostring },
@@ -1854,6 +1905,9 @@ init(void)
 
     inst_assign(&consts.metaclass, (inst_t) mem_alloc(sizeof(struct inst_metaclass), true));
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
+    CLASSVAL(consts.metaclass)->init      = metaclass_init;
+    CLASSVAL(consts.metaclass)->walk      = metaclass_walk;
+    CLASSVAL(consts.metaclass)->free      = inst_free_parent;
 
     /* Pass 2 - Create classes */
 

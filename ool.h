@@ -164,6 +164,8 @@ struct inst_set {
 void set_new(inst_t *dst, unsigned size);
 void strdict_new(inst_t *dst, unsigned size);
 void dict_new(inst_t *dst, unsigned size);
+inst_t dict_at(inst_t dict, inst_t key);
+void   dict_at_put(inst_t dict, inst_t key, inst_t val);
 
 struct inst_module {
   struct inst_set base[1];
@@ -239,6 +241,7 @@ struct {
   inst_t str_object;
   inst_t str_new;
   inst_t str_newc;
+  inst_t str_newc_parentc_instancevariablesc;
   inst_t str_pair;
   inst_t str_quote;
   inst_t str_string;
