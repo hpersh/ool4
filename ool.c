@@ -1617,6 +1617,13 @@ module_new(inst_t *dst, inst_t name, inst_t parent)
 void
 user_class_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
+  unsigned ofs;
+  inst_t   *p;
+  for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size, p = (inst_t *)((char *) inst + ofs); ofs < CLASSVAL(inst)->inst_size; ofs += sizeof(inst_t), ++p) {
+    (*func)(*p);
+  }
+
+  inst_walk_parent(inst, cl, func);
 }
 
 void
@@ -1652,11 +1659,15 @@ metaclass_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 void
 metaclass_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
-  unsigned ofs;
-  inst_t   *p;
-  for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size, p = (inst_t *)((char *) inst + ofs); ofs < CLASSVAL(inst)->inst_size; ofs += sizeof(inst_t), ++p) {
-    (*func)(*p);
-  }
+  (*func)(CLASSVAL(inst)->name);
+  (*func)(CLASSVAL(inst)->module);
+  (*func)(CLASSVAL(inst)->parent);
+  (*func)(CLASSVAL(inst)->cl_vars);
+  (*func)(CLASSVAL(inst)->cl_methods);
+  (*func)(CLASSVAL(inst)->inst_vars);
+  (*func)(CLASSVAL(inst)->inst_methods);
+
+  inst_walk_parent(inst, cl, func);
 }
 
 void
@@ -1687,7 +1698,7 @@ env_find(inst_t var)
     struct frame_module *p;
     
     for (p = modfp; p != 0; p = p->prev) {
-      inst_t q = dict_at(p->module, var);
+      inst_t q = dict_at(p->ctxt, var);
       
       if (q != 0)  return (&CDR(q));
     }
@@ -1699,7 +1710,7 @@ env_find(inst_t var)
 inst_t
 env_top(void)
 {
-  return (blkfp ? blkfp->dict : modfp->module);
+  return (blkfp ? blkfp->dict : MODULE_CTXT);
 }
 
 inst_t
@@ -1771,42 +1782,55 @@ method_find(inst_t sel, unsigned ofs, inst_t cl, inst_t *found_cl)
 }
 
 void
+method_run(inst_t m)
+{
+  inst_t cl = inst_of(m);
+  if (cl == consts.cl_code_method) {
+    (*CODEMETHODVAL(m))();
+    return;
+  }
+  if (cl == consts.cl_block) {
+    FRAME_WORK_BEGIN(2) {
+      inst_assign(&WORK(0), m);
+      inst_t *p;
+      unsigned argc  = MC_ARGC;
+      inst_t   *argv = &MC_ARG(0);
+      for (p = &WORK(1); argc > 0; --argc, ++argv) {
+	list_new(p, *argv, 0);
+	p = &CDR(*p);
+      }
+      
+      inst_method_call(MC_RESULT, consts.str_evalc, 2, &WORK(0));
+    } FRAME_WORK_END;
+    
+    return;
+  }
+
+  error("Bad method");
+}
+
+void
 inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
 {
   assert(argc > 0);
 
-  inst_t f = 0, recvr = argv[0], cl = inst_of(recvr), found_cl;
+  inst_t m = 0, recvr = argv[0], cl = inst_of(recvr), found_cl;
 
-  if (cl == 0 || cl == consts.metaclass)  f = method_find(sel, CLASSVAL_OFS(cl_methods), recvr, &found_cl);
-  if (cl != 0 && f == 0)                  f = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
+  if (cl == 0 || cl == consts.metaclass)  m = method_find(sel, CLASSVAL_OFS(cl_methods), recvr, &found_cl);
+  if (cl != 0 && m == 0)                  m = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
 
   FRAME_METHOD_CALL_BEGIN(dst, found_cl, sel, argc, argv) {
-    if (f == 0)  error("Method not found");
+    if (m == 0)  error("Method not found");
 
-    cl = inst_of(f);
-    if (cl == consts.cl_code_method) {
-      (*CODEMETHODVAL(f))();
-      goto done;
+    inst_t mod = CLASSVAL(found_cl)->module;
+    if (mod != MODULE_CTXT) {
+      FRAME_MODULE_BEGIN(MODULE_CUR, mod) {
+	method_run(m);
+      } FRAME_MODULE_END;
+    } else {
+      method_run(m);
     }
-    if (cl == consts.cl_block) {
-      FRAME_WORK_BEGIN(2) {
-	inst_assign(&WORK(0), f);
-	inst_t *p;
-	for (p = &WORK(1); argc > 0; --argc, ++argv) {
-	  list_new(p, *argv, 0);
-	  p = &CDR(*p);
-	}
 
-	inst_method_call(MC_RESULT, consts.str_evalc, 2, &WORK(0));
-      } FRAME_WORK_END;
-
-      goto done;
-    }
-    
-    error("Bad method");
-
-  done:
-    ;
   } FRAME_METHOD_CALL_END;
 }
 
@@ -2041,6 +2065,14 @@ init(void)
       dict_at_put(consts.module_main, *init_cl_tbl[i].name, *init_cl_tbl[i].cl);
     }
 
+    /* Pass 7 - Fix up classes */
+
+    inst_assign(&CLASSVAL(consts.metaclass)->module, consts.module_main);
+
+    for (i = 0; i < ARRAY_SIZE(init_cl_tbl); ++i) {
+      inst_assign(&CLASSVAL(*init_cl_tbl[i].cl)->module, consts.module_main);
+    }    
+
   } FRAME_WORK_END;
 }
 
@@ -2063,7 +2095,7 @@ main(void)
 
   stream_file_init(str, stdin);
 
-  FRAME_MODULE_BEGIN(consts.module_main) {
+  FRAME_MODULE_BEGIN(consts.module_main, consts.module_main) {
     FRAME_WORK_BEGIN(1) {
       FRAME_INPUT_BEGIN(str->base) {
 	FRAME_ERROR_BEGIN {

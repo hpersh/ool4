@@ -479,18 +479,20 @@ frame_method_call_pop(void)
 struct frame_module {
   struct frame        base[1];
   struct frame_module *prev;
-  inst_t              module;
+  inst_t              cur;	/* Current, for adding */
+  inst_t              ctxt;	/* Search context */
 };
 
 struct frame_module *modfp;
 
 static inline void
-frame_module_push(struct frame_module *fr, inst_t module)
+frame_module_push(struct frame_module *fr, inst_t cur, inst_t ctxt)
 {
   frame_push(fr->base, FRAME_TYPE_MODULE);
 
-  fr->prev   = modfp;
-  fr->module = module;
+  fr->prev = modfp;
+  fr->cur  = cur;
+  fr->ctxt = ctxt;
 
   modfp = fr;
 }
@@ -503,12 +505,13 @@ frame_module_pop(void)
   frame_pop();
 }
 
-#define FRAME_MODULE_BEGIN(_mod)		\
+#define FRAME_MODULE_BEGIN(_cur, _ctxt)		\
   {						\
     struct frame_module __fr[1];		\
-    frame_module_push(__fr, (_mod));
+    frame_module_push(__fr, (_cur), (_ctxt));
 
-#define MODULE_CUR  (modfp->module)
+#define MODULE_CUR   (modfp->cur)
+#define MODULE_CTXT  (modfp->cur)
 
 #define FRAME_MODULE_END \
     frame_module_pop();	 \
