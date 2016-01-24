@@ -387,7 +387,7 @@ error(char *msg)
 {
   error_begin();
 
-  fprintf(stderr, "%s\n", msg);
+  if (msg != 0)  fprintf(stderr, "%s\n", msg);
 
   backtrace();
 
@@ -1584,6 +1584,44 @@ cm_block_tostring(void)
 }
 
 void
+file_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+
+  FILEVAL(inst)->fp = va_arg(ap, FILE *);
+  --argc;
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
+file_free(inst_t inst, inst_t cl)
+{
+  fclose(FILEVAL(inst)->fp);
+
+  inst_free_parent(inst, cl);
+}
+
+void
+file_new(inst_t *dst, FILE *fp)
+{
+  inst_alloc(dst, consts.cl_file);
+  inst_init(*dst, 1, fp);
+}
+
+void
+cm_file_new(void)
+{
+  FILE *fp = fopen(STRVAL(MC_ARG(1))->data, STRVAL(MC_ARG(2))->data);
+  if (fp == 0) {
+    perror(0);
+    error(0);
+  }
+
+  file_new(MC_RESULT, fp);
+}
+
+void
 module_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 2);
@@ -1853,6 +1891,7 @@ struct {
   { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    block_init,       inst_walk_parent, inst_free_parent },
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
+  { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        inst_walk_parent, file_free },
   { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent },
   { &consts.cl_env,         &consts.str_environment, &consts.cl_object, sizeof(struct inst) },
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
@@ -1883,6 +1922,7 @@ struct {
   { &consts.str_eval,        "eval" },
   { &consts.str_evalc,       "eval:" },
   { &consts.str_false,       "#false" },
+  { &consts.str_file,        "#File" },
   { &consts.str_hash,        "hash" },
   { &consts.str_instance_methods, "instance-methods" },
   { &consts.str_integer,     "#Integer" },
@@ -1894,6 +1934,7 @@ struct {
   { &consts.str_module,      "#Module" },
   { &consts.str_new,         "new" },
   { &consts.str_newc,        "new:" },
+  { &consts.str_newc_modec,  "new:mode:" },
   { &consts.str_newc_parentc_instancevariablesc, "new:parent:instance-variables:"},
   { &consts.str_object,      "#Object" },
   { &consts.str_pair,        "#Pair" },
@@ -1985,6 +2026,8 @@ struct {
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_delc,     cm_dict_del },
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_dict_write },
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_dict_write },
+
+  { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },

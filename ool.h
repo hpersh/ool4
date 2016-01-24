@@ -168,6 +168,15 @@ void dict_new(inst_t *dst, unsigned size);
 inst_t dict_at(inst_t dict, inst_t key);
 void   dict_at_put(inst_t dict, inst_t key, inst_t val);
 
+struct inst_file {
+  struct inst base[1];
+  struct {
+    FILE *fp;
+  } val[1];
+};
+#define FILEVAL(x) (((struct inst_file *)(x))->val)
+void file_new(inst_t *dst, FILE *fp);
+
 struct inst_module {
   struct inst_set base[1];
   struct {
@@ -207,6 +216,7 @@ struct {
   inst_t cl_block;
   inst_t cl_array;
   inst_t cl_dict;
+  inst_t cl_file;
   inst_t cl_module;
   inst_t cl_env;
   inst_t cl_system;
@@ -232,6 +242,7 @@ struct {
   inst_t str_eval;
   inst_t str_evalc;
   inst_t str_false;
+  inst_t str_file;
   inst_t str_hash;
   inst_t str_instance_methods;
   inst_t str_integer; 
@@ -244,6 +255,7 @@ struct {
   inst_t str_object;
   inst_t str_new;
   inst_t str_newc;
+  inst_t str_newc_modec;
   inst_t str_newc_parentc_instancevariablesc;
   inst_t str_pair;
   inst_t str_quote;
