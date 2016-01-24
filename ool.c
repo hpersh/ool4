@@ -347,6 +347,7 @@ backtrace(void)
   FRAME_WORK_BEGIN(1) {
     struct frame_method_call *p;
     for (p = mcfp; p != 0; p = p->prev) {
+      if (p->cl == 0)  continue;
       fprintf(stderr, "%s.%s(", STRVAL(CLASSVAL(p->cl)->name)->data, STRVAL(p->sel)->data);
       unsigned n;
       inst_t   *q;
@@ -710,8 +711,7 @@ cm_code_method_eval(void)
     inst_t   *p, q;
     unsigned n;
     for (p = &WORK(0), q = MC_ARG(1), n = nargs; n > 0; --n, ++p, q = CDR(q)) {
-      list_new(p, CAR(q), 0);
-      p = &CDR(*p);
+      inst_assign(p, CAR(q));
     }
 
     void (*f)(void) = CODEMETHODVAL(MC_ARG(0));
