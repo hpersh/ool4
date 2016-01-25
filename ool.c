@@ -1698,21 +1698,27 @@ rep(inst_t *dst, bool interactf)
 }
 
 void
-cm_file_load(void)
+file_load(inst_t *dst, FILE *fp)
 {
-  if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_file)  error_bad_arg(MC_ARG(0));
-
   struct stream_file str[1];
 
-  stream_file_init(str, FILEVAL(MC_ARG(0))->fp);
+  stream_file_init(str, fp);
 
   FRAME_WORK_BEGIN(1) {
     FRAME_INPUT_BEGIN(str->base) {
       rep(&WORK(0), false);
     } FRAME_INPUT_END;
-    inst_assign(MC_RESULT, WORK(0));
+    inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
+}
+
+void
+cm_file_load(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_file)  error_bad_arg(MC_ARG(0));
+
+  file_load(MC_RESULT, FILEVAL(MC_ARG(0))->fp);
 }
 
 void
@@ -1757,6 +1763,50 @@ module_new(inst_t *dst, inst_t name)
     inst_alloc(&WORK(0), consts.cl_module);
     inst_init(WORK(0), 3, name, strdict_find, 32);
     inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_module_new(void)
+{
+  FRAME_WORK_BEGIN(2) {
+    str_newc(&WORK(0), 1, 5, "path");
+    inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(0));
+    if (p != 0) {
+      p = CDR(p);
+      if (!is_list(p))  p = 0;
+    }
+    if (p == 0) {
+      str_newc(&WORK(0), 1, 2, ".");
+      list_new(&WORK(0), WORK(0), 0);
+      p = WORK(0);
+    }
+
+    FILE *fp = 0;
+
+    for ( ; p != 0; p = CDR(p)) {
+      inst_t d = CAR(p);
+      if (inst_of(d) != consts.cl_str)  continue;
+      str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
+	                    2, "/",
+	                    STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
+	                    5, ".ool"
+	       );
+      fp = fopen(STRVAL(WORK(1))->data, "r");
+      if (fp != 0)  break;
+    }
+
+    if (fp == 0) {
+      error("Module not found");
+    }
+
+    module_new(&WORK(0), MC_ARG(1));
+
+    FRAME_MODULE_BEGIN(WORK(0), WORK(0)) {
+      file_load(&WORK(1), fp);
+    } FRAME_MODULE_END;
+
+    inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
 }
 
@@ -2158,6 +2208,8 @@ struct {
   { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load, cm_file_load },
+
+  { &consts.cl_module, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_module_new },  
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
