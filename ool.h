@@ -249,6 +249,7 @@ struct {
   inst_t str_instance_methods;
   inst_t str_instance_variables;
   inst_t str_integer; 
+  inst_t str_keys;
   inst_t str_list;
   inst_t str_load;
   inst_t str_ltc;

@@ -451,6 +451,23 @@ cm_cl_tostring(void)
 }
 
 void
+cm_cl_at(void)
+{
+  inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, MC_ARG(1));
+  if (p == 0)  error("No such class variable");
+
+  inst_assign(MC_RESULT, CDR(p));
+}
+
+void
+cm_cl_atput(void)
+{
+  dict_at_put(CLASSVAL(MC_ARG(0))->cl_vars, MC_ARG(1), MC_ARG(2));
+
+  inst_assign(MC_RESULT, MC_ARG(2));
+}
+
+void
 object_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc == 0);
@@ -553,7 +570,6 @@ obj_inst_var(inst_t inst, inst_t var)
 
   return ((inst_t *)((char *) inst + INTVAL(CDR(p))));
 }
-
 
 void
 cm_obj_at(void)
@@ -1512,6 +1528,12 @@ cm_dict_del(void)
 }
 
 void
+cm_dict_keys(void)
+{
+  dict_keys(MC_RESULT, MC_ARG(0));
+}
+
+void
 dict_to_list(inst_t *dst, inst_t d)
 {
   FRAME_WORK_BEGIN(1) {
@@ -2011,6 +2033,7 @@ struct {
   { &consts.str_instance_methods, "instance-methods" },
   { &consts.str_instance_variables, "instance-variables" },
   { &consts.str_integer,     "#Integer" },
+  { &consts.str_keys,        "keys" },
   { &consts.str_list,        "#List" },
   { &consts.str_load,        "load" },
   { &consts.str_ltc,         "lt:" },
@@ -2048,6 +2071,8 @@ struct {
   { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_instance_methods,   cm_cl_inst_methods },
   { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_instance_variables, cm_cl_inst_vars },
   { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_tostring,           cm_cl_tostring },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_atc,                cm_cl_at },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc,           cm_cl_atput },
 
   { &consts.cl_object, CLASSVAL_OFS(cl_methods), &consts.str_new, cm_obj_new },
 
@@ -2114,6 +2139,7 @@ struct {
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_delc,     cm_dict_del },
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_dict_write },
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_dict_write },
+  { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_keys,     cm_dict_keys },
 
   { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 
