@@ -167,6 +167,7 @@ void strdict_new(inst_t *dst, unsigned size);
 void dict_new(inst_t *dst, unsigned size);
 inst_t dict_at(inst_t dict, inst_t key);
 void   dict_at_put(inst_t dict, inst_t key, inst_t val);
+void   dict_keys(inst_t *dst, inst_t dict);
 
 struct inst_file {
   struct inst base[1];
@@ -233,6 +234,7 @@ struct {
   inst_t str_car;
   inst_t str_cdr;
   inst_t str_class_methods;
+  inst_t str_class_variables;
   inst_t str_code_method;
   inst_t str_delc;
   inst_t str_dictionary;
@@ -245,6 +247,7 @@ struct {
   inst_t str_file;
   inst_t str_hash;
   inst_t str_instance_methods;
+  inst_t str_instance_variables;
   inst_t str_integer; 
   inst_t str_list;
   inst_t str_load;

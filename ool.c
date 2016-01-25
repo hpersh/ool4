@@ -418,9 +418,21 @@ error_bad_arg(inst_t arg)
 }
 
 void
+cm_cl_cl_vars(void)
+{
+  inst_assign(MC_RESULT, CLASSVAL(MC_ARG(0))->cl_vars);
+}
+
+void
 cm_cl_cl_methods(void)
 {
   inst_assign(MC_RESULT, CLASSVAL(MC_ARG(0))->cl_methods);
+}
+
+void
+cm_cl_inst_vars(void)
+{
+  dict_keys(MC_RESULT, CLASSVAL(MC_ARG(0))->inst_vars);
 }
 
 void
@@ -1454,6 +1466,24 @@ dict_del(inst_t dict, inst_t key)
 }
 
 void
+dict_keys(inst_t *dst, inst_t dict)
+{
+  FRAME_WORK_BEGIN(1) {
+    inst_t   *p, *r;
+    unsigned n;
+    for (r = &WORK(0), p = ARRAYVAL(dict)->data, n = ARRAYVAL(dict)->size; n > 0; --n, ++p) {
+      inst_t q;
+      for (q = *p; q != 0; q = CDR(q)) {
+	list_new(r, CAR(CAR(q)), 0);
+	r = &CDR(*r);
+      }
+    }
+    
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
 cm_dict_new(void)
 {
   dict_new(MC_RESULT, 32);
@@ -1695,6 +1725,16 @@ module_new(inst_t *dst, inst_t name, inst_t parent)
 }
 
 void
+module_cl_init(inst_t cl)
+{
+  FRAME_WORK_BEGIN(2) {
+    str_newc(&WORK(0), 1, 5, "path");
+    str_newc(&WORK(1), 1, 2, ".");
+    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
+  } FRAME_WORK_END;
+}
+
+void
 user_class_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
   unsigned ofs;
@@ -1916,10 +1956,11 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
 
 struct {
   inst_t *cl, *name, *parent;
-    unsigned inst_size;
-    void (*init)(inst_t inst, inst_t cl, unsigned argc, va_list ap);
-    void (*walk)(inst_t inst, inst_t cl, void (*func)(inst_t));
-    void (*free)(inst_t inst, inst_t cl);
+  unsigned inst_size;
+  void (*init)(inst_t inst, inst_t cl, unsigned argc, va_list ap);
+  void (*walk)(inst_t inst, inst_t cl, void (*func)(inst_t));
+  void (*free)(inst_t inst, inst_t cl);
+  void (*cl_init)(inst_t cl);
 } init_cl_tbl[] = {
   { &consts.cl_object,      &consts.str_object,                      0, sizeof(struct inst),             object_init,      object_walk,      object_free },
   { &consts.cl_bool,        &consts.str_boolean,     &consts.cl_object, sizeof(struct inst_bool),        bool_init,        inst_walk_parent, inst_free_parent },
@@ -1934,7 +1975,7 @@ struct {
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        inst_walk_parent, file_free },
-  { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent },
+  { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent, module_cl_init },
   { &consts.cl_env,         &consts.str_environment, &consts.cl_object, sizeof(struct inst) },
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
 };
@@ -1955,6 +1996,7 @@ struct {
   { &consts.str_car,         "car" },
   { &consts.str_cdr,         "cdr" },
   { &consts.str_class_methods, "class-methods" },
+  { &consts.str_class_variables, "class-variables" },
   { &consts.str_code_method, "#Code_Method" },
   { &consts.str_delc,        "del:" },
   { &consts.str_dictionary,  "#Dictionary" },
@@ -1967,6 +2009,7 @@ struct {
   { &consts.str_file,        "#File" },
   { &consts.str_hash,        "hash" },
   { &consts.str_instance_methods, "instance-methods" },
+  { &consts.str_instance_variables, "instance-variables" },
   { &consts.str_integer,     "#Integer" },
   { &consts.str_list,        "#List" },
   { &consts.str_load,        "load" },
@@ -2000,9 +2043,11 @@ struct {
 } init_method_tbl[] = {
   { &consts.metaclass, CLASSVAL_OFS(cl_methods), &consts.str_newc_parentc_instancevariablesc, cm_metaclass_new },
 
-  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_class_methods,    cm_cl_cl_methods },
-  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_instance_methods, cm_cl_inst_methods },
-  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_tostring,         cm_cl_tostring },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_class_methods,      cm_cl_cl_methods },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_class_variables,    cm_cl_cl_vars },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_instance_methods,   cm_cl_inst_methods },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_instance_variables, cm_cl_inst_vars },
+  { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_tostring,           cm_cl_tostring },
 
   { &consts.cl_object, CLASSVAL_OFS(cl_methods), &consts.str_new, cm_obj_new },
 
@@ -2161,6 +2206,11 @@ init(void)
       inst_assign(&CLASSVAL(*init_cl_tbl[i].cl)->module, consts.module_main);
     }    
 
+    /* Pass 8 - Init classes */
+
+    for (i = 0; i < ARRAY_SIZE(init_cl_tbl); ++i) {
+      if (init_cl_tbl[i].cl_init != 0) (*init_cl_tbl[i].cl_init)(*init_cl_tbl[i].cl);
+    }    
   } FRAME_WORK_END;
 }
 
