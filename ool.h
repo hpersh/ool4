@@ -181,11 +181,11 @@ void file_new(inst_t *dst, FILE *fp);
 struct inst_module {
   struct inst_set base[1];
   struct {
-    inst_t name, parent;
+    inst_t name;
   } val[1];
 };
 #define MODULEVAL(x)  (((struct inst_module *)(x))->val)
-void module_new(inst_t *dst, inst_t name, inst_t parent);
+void module_new(inst_t *dst, inst_t name);
 
 struct inst_metaclass {
   struct inst base[1];

@@ -1716,13 +1716,28 @@ cm_file_load(void)
 }
 
 void
+file_cl_init(inst_t cl)
+{
+  FRAME_WORK_BEGIN(2) {
+    str_newc(&WORK(0), 1, 6, "stdin");
+    file_new(&WORK(1), stdin);
+    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
+    str_newc(&WORK(0), 1, 7, "stdout");
+    file_new(&WORK(1), stdout);
+    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
+    str_newc(&WORK(0), 1, 7, "stderr");
+    file_new(&WORK(1), stderr);
+    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
+  } FRAME_WORK_END;
+}
+
+void
 module_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc >= 2);
+  assert(argc >= 1);
 
   inst_assign(&MODULEVAL(inst)->name, va_arg(ap, inst_t));
-  inst_assign(&MODULEVAL(inst)->parent, va_arg(ap, inst_t));
-  argc -= 2;
+  argc -= 1;
 
   inst_init_parent(inst, cl, argc, ap);
 }
@@ -1731,17 +1746,16 @@ void
 module_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
   (*func)(MODULEVAL(inst)->name);
-  (*func)(MODULEVAL(inst)->parent);
 
   inst_walk_parent(inst, cl, func);
 }
 
 void
-module_new(inst_t *dst, inst_t name, inst_t parent)
+module_new(inst_t *dst, inst_t name)
 {
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), consts.cl_module);
-    inst_init(WORK(0), 4, name, parent, strdict_find, 32);
+    inst_init(WORK(0), 3, name, strdict_find, 32);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
 }
@@ -1996,7 +2010,7 @@ struct {
   { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    block_init,       inst_walk_parent, inst_free_parent },
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
-  { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        inst_walk_parent, file_free },
+  { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        inst_walk_parent, file_free,        file_cl_init },
   { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent, module_cl_init },
   { &consts.cl_env,         &consts.str_environment, &consts.cl_object, sizeof(struct inst) },
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
@@ -2211,7 +2225,7 @@ init(void)
 
     /* Pass 6 - Create main module */
 
-    module_new(&consts.module_main, consts.str_main, 0);
+    module_new(&consts.module_main, consts.str_main);
     dict_at_put(consts.module_main, consts.str_main, consts.module_main);
     dict_at_put(consts.module_main, consts.str_metaclass, consts.metaclass);
     str_newc(&WORK(0), 1, 5, "#nil");
