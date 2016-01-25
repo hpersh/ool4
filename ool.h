@@ -247,6 +247,7 @@ struct {
   inst_t str_instance_methods;
   inst_t str_integer; 
   inst_t str_list;
+  inst_t str_load;
   inst_t str_ltc;
   inst_t str_main;
   inst_t str_metaclass;
@@ -296,7 +297,6 @@ struct stream_funcs {
   bool (*eof)(struct stream *);
   int  (*getc)(struct stream *);
   void (*ungetc)(struct stream *, char c);
-  void (*close)(struct stream *);
 };
 
 struct stream {
@@ -359,7 +359,6 @@ static inline void
 parse_ctxt_fini(struct parse_ctxt *pc)
 {
   tokbuf_fini(pc->tb);
-  stream_close(pc->str);
 }
 
 enum {

@@ -1612,6 +1612,10 @@ file_new(inst_t *dst, FILE *fp)
 void
 cm_file_new(void)
 {
+  if (MC_ARGC != 3)  error_argc();
+  if (inst_of(MC_ARG(1)) != consts.cl_str)  error_bad_arg(MC_ARG(1));
+  if (inst_of(MC_ARG(2)) != consts.cl_str)  error_bad_arg(MC_ARG(2));
+
   FILE *fp = fopen(STRVAL(MC_ARG(1))->data, STRVAL(MC_ARG(2))->data);
   if (fp == 0) {
     perror(0);
@@ -1619,6 +1623,44 @@ cm_file_new(void)
   }
 
   file_new(MC_RESULT, fp);
+}
+
+void
+rep(inst_t *dst, bool interactf)
+{
+  FRAME_WORK_BEGIN(1) {
+    for (;;) {
+      unsigned rc = parse(&WORK(0));
+      if (rc == PARSE_EOF)  break;
+      if (rc == PARSE_ERR) {
+	fprintf(stderr, "Syntax error\n");
+	if (interactf)  continue;  else  break;
+      }
+      inst_method_call(dst, consts.str_eval, 1, &WORK(0));
+      if (interactf) {
+	inst_method_call(&WORK(0), consts.str_tostring, 1, dst);
+	printf("%s\n", STRVAL(WORK(0))->data);
+      }
+    }
+  } FRAME_WORK_END;
+}
+
+void
+cm_file_load(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_file)  error_bad_arg(MC_ARG(0));
+
+  struct stream_file str[1];
+
+  stream_file_init(str, FILEVAL(MC_ARG(0))->fp);
+
+  FRAME_WORK_BEGIN(1) {
+    FRAME_INPUT_BEGIN(str->base) {
+      rep(&WORK(0), false);
+    } FRAME_INPUT_END;
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -1927,6 +1969,7 @@ struct {
   { &consts.str_instance_methods, "instance-methods" },
   { &consts.str_integer,     "#Integer" },
   { &consts.str_list,        "#List" },
+  { &consts.str_load,        "load" },
   { &consts.str_ltc,         "lt:" },
   { &consts.str_main,        "#main" },
   { &consts.str_metaclass,   "#Metaclass" },
@@ -2029,6 +2072,8 @@ struct {
 
   { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 
+  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load, cm_file_load },
+
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_putc, cm_env_atput }
@@ -2130,29 +2175,42 @@ stats_dump(void)
 }
 
 int
-main(void)
+main(int argc, char **argv)
 {
   init();
 
+  FILE *fp;
+  bool interactf;
+
+  switch (argc) {
+  case 1:
+    fp        = stdin;
+    interactf = true;
+    break;
+
+  case 2:
+    fp = fopen(argv[1], "r");
+    if (fp == 0) {
+      perror("Open input file failed");
+      exit(1);
+    }
+    interactf = false;
+    break;
+
+  default:
+    fprintf(stderr, "usage: %s [ file ]\n", argv[0]);
+    exit(1);
+  }
+
   struct stream_file str[1];
 
-  stream_file_init(str, stdin);
+  stream_file_init(str, fp);
 
   FRAME_MODULE_BEGIN(consts.module_main, consts.module_main) {
     FRAME_WORK_BEGIN(1) {
       FRAME_INPUT_BEGIN(str->base) {
 	FRAME_ERROR_BEGIN {
-	  for (;;) {
-	    unsigned rc = parse(&WORK(0));
-	    if (rc == PARSE_EOF)  break;
-	    if (rc == PARSE_ERR) {
-	      fprintf(stderr, "Syntax error\n");
-	      continue;
-	    }
-	    inst_method_call(&WORK(0), consts.str_eval, 1, &WORK(0));
-	    inst_method_call(&WORK(0), consts.str_tostring, 1, &WORK(0));
-	    printf("%s\n", STRVAL(WORK(0))->data);
-	  }
+	  rep(&WORK(0), interactf);
 	} FRAME_ERROR_END;
       } FRAME_INPUT_END;
     } FRAME_WORK_END;

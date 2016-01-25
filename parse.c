@@ -22,12 +22,6 @@ stream_ungetc(struct stream *str, char c)
   (*str->funcs->ungetc)(str, c);
 }
 
-void
-stream_close(struct stream *str)
-{
-  (*str->funcs->close)(str);
-}
-
 bool
 stream_file_eof(struct stream *str)
 {
@@ -46,17 +40,10 @@ stream_file_ungetc(struct stream *str, char c)
   ungetc(c, ((struct stream_file *) str)->fp);
 }
 
-void
-stream_file_close(struct stream *str)
-{
-  fclose(((struct stream_file *) str)->fp);
-}
-
 struct stream_funcs stream_funcs_file[] = {
   { .eof    = stream_file_eof,
     .getc   = stream_file_getc,
     .ungetc = stream_file_ungetc,
-    .close  = stream_file_close,
   }
 };
 
