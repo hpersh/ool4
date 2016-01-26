@@ -1806,8 +1806,21 @@ cm_module_new(void)
       file_load(&WORK(1), fp);
     } FRAME_MODULE_END;
 
+    dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
+
     inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
+}
+
+void
+cm_module_at(void)
+{
+  inst_t p = dict_at(MC_ARG(0), MC_ARG(1));
+  if (p == 0) {
+    error("Symbol not bound");
+  }
+
+  inst_assign(MC_RESULT, CDR(p));
 }
 
 void
@@ -2205,11 +2218,13 @@ struct {
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_dict_write },
   { &consts.cl_dict, CLASSVAL_OFS(inst_methods), &consts.str_keys,     cm_dict_keys },
 
+  { &consts.cl_module, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_module_new },  
+
+  { &consts.cl_module, CLASSVAL_OFS(inst_methods), &consts.str_atc, cm_module_at },  
+
   { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load, cm_file_load },
-
-  { &consts.cl_module, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_module_new },  
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
