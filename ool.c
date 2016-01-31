@@ -256,6 +256,7 @@ inst_free(inst_t inst)
 {
   inst_t cl = inst_of(inst);
 
+  (*CLASSVAL(cl)->walk)(inst, cl, inst_release);
   (*CLASSVAL(cl)->free)(inst, cl);
 }
 
@@ -312,15 +313,34 @@ frame_jmp(struct frame_jmp *fr, int code)
   longjmp(fr->jmp_buf, code);
 }
 
-struct {
-  struct list active[1], collect[1];
-} inst_list;
+struct list inst_list[2];
+unsigned inst_list_idx_active, inst_list_idx_collect = 1;
+
+static inline struct list *
+inst_list_active(void)
+{
+  return (&inst_list[inst_list_idx_active]);
+}
+
+static inline struct list *
+inst_list_collect(void)
+{
+  return (&inst_list[inst_list_idx_collect]);
+}
+
+static void
+inst_list_swap(void)
+{
+  inst_list_idx_collect = 1 - (inst_list_idx_active  = 1 - inst_list_idx_active);
+}
 
 void
 inst_list_init(void)
 {
-  list_init(inst_list.active);
-  list_init(inst_list.collect);
+  unsigned i;
+  for (i = 0; i < ARRAY_SIZE(inst_list); ++i) {
+    list_init(&inst_list[i]);
+  }
 }
 
 void
@@ -328,7 +348,7 @@ inst_alloc(inst_t *dst, inst_t cl)
 {
   inst_t inst = (inst_t) mem_alloc(CLASSVAL(cl)->inst_size, true);
 
-  list_insert(inst->list_node, list_end(inst_list.active));
+  list_insert(inst->list_node, list_end(inst_list_active()));
   
   inst_assign(&inst->inst_of, cl);
   
@@ -337,7 +357,7 @@ inst_alloc(inst_t *dst, inst_t cl)
 
 void mark(inst_t inst);
 
-  void
+void
 metaclass_mark(inst_t inst)
 {
   mark(CLASSVAL(inst)->name);
@@ -355,9 +375,9 @@ mark(inst_t inst)
   if (inst == 0 || ++inst->ref_cnt > 1)  return;
 
   list_erase(inst->list_node);
-  list_insert(inst->list_node, list_end(inst_list.active));
+  list_insert(inst->list_node, list_end(inst_list_active()));
   
-  inst_t cl = inst_of(cl);
+  inst_t cl = inst_of(inst);
   if (cl == 0) {
     metaclass_mark(inst);
     return;
@@ -368,10 +388,13 @@ mark(inst_t inst)
 void
 collect(void)
 {
+  inst_list_swap();
+
   {
-    struct list temp = *inst_list.active;
-    *inst_list.active = *inst_list.collect;
-    *inst_list.collect = temp;
+    struct list *li = inst_list_collect(), *p;
+    for (p = list_first(li); p != list_end(li); p = list_next(p)) {
+      FIELD_PTR_TO_STRUCT_PTR(p, struct inst, list_node)->ref_cnt = 0;
+    }
   }
 
   {
@@ -392,8 +415,9 @@ collect(void)
   }
 
   {
-    while (!list_empty(inst_list.collect)) {
-      struct list *p = list_first(inst_list.collect);
+    struct list *li = inst_list_collect();
+    while (!list_empty(li)) {
+      struct list *p = list_first(li);
       list_erase(p);
       inst_t inst = FIELD_PTR_TO_STRUCT_PTR(p, struct inst, list_node);
       inst_t cl = inst_of(inst);
@@ -1342,11 +1366,12 @@ array_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 void
 array_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
-  inst_t   *p;
   unsigned n;
-  
-  for (p = ARRAYVAL(inst)->data, n = ARRAYVAL(inst)->size; n > 0; --n, ++p) {
-    (*func)(*p);
+  inst_t   *p;
+  if ((p = ARRAYVAL(inst)->data) != 0) {
+    for (n = ARRAYVAL(inst)->size; n > 0; --n, ++p) {
+      (*func)(*p);
+    }
   }
 
   inst_walk_parent(inst, cl, func);
@@ -2340,7 +2365,7 @@ init(void)
     /* Pass 1 - Create metaclass */
 
     inst_assign(&consts.metaclass, (inst_t) mem_alloc(sizeof(struct inst_metaclass), true));
-    list_insert(consts.metaclass->list_node, list_end(inst_list.active));
+    list_insert(consts.metaclass->list_node, list_end(inst_list_active()));
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
     CLASSVAL(consts.metaclass)->init      = metaclass_init;
     CLASSVAL(consts.metaclass)->walk      = metaclass_walk;
