@@ -265,6 +265,7 @@ struct {
   inst_t str_newc_parentc_instancevariablesc;
   inst_t str_pair;
   inst_t str_quote;
+  inst_t str_read;
   inst_t str_string;
   inst_t str_system;
   inst_t str_tostring;
@@ -353,6 +354,9 @@ tokbuf_fini(struct tokbuf *tb)
 {
   if (tb->buf != 0)  mem_free(tb->buf, tb->bufsize);
 }
+
+void tokbuf_append(struct tokbuf *tb, unsigned n, char *s);
+void tokbuf_append_char(struct tokbuf *tb, char c);
 
 struct parse_ctxt {
   struct stream *str;
@@ -657,3 +661,40 @@ frame_input_pop(void)
 
 void error(char *msg);
 void fatal(char *msg);
+
+struct init_cl {
+  inst_t *cl, *name, *parent;
+  unsigned inst_size;
+  void (*init)(inst_t inst, inst_t cl, unsigned argc, va_list ap);
+  void (*walk)(inst_t inst, inst_t cl, void (*func)(inst_t));
+  void (*free)(inst_t inst, inst_t cl);
+  void (*cl_init)(inst_t cl);
+};
+
+struct init_str {
+  inst_t *str;
+  char   *data;
+};
+
+struct init_method {
+  inst_t   *cl;
+  unsigned ofs;
+  inst_t   *sel;
+  void     (*func)(void);
+};
+
+struct init_code_module {
+  struct list        list_node[1];
+  inst_t             *consts;
+  unsigned           consts_size;
+  struct init_cl     *init_cl;
+  unsigned           init_cl_size;
+  struct init_str    *init_str;
+  unsigned           init_str_size;
+  struct init_method *init_method;
+  unsigned           init_method_size;
+};
+
+void code_module_add(struct init_code_module *cm);
+void code_module_del(struct init_code_module *cm);
+

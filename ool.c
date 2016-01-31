@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <sys/mman.h>
+#include <dlfcn.h>
 #include <assert.h>
 
 #include "ool.h"
@@ -332,6 +333,14 @@ inst_list_swap(void)
   inst_list_idx_collect = 1 - (inst_list_idx_active  = 1 - inst_list_idx_active);
 }
 
+struct list code_module_list[1];
+
+void
+code_module_init(void)
+{
+  list_init(code_module_list);
+}
+
 void
 inst_list_init(void)
 {
@@ -409,6 +418,18 @@ collect(void)
     unsigned n;
     for (p = (inst_t *) &consts, n = sizeof(consts) / sizeof(inst_t); n > 0; --n, ++p) {
       mark(*p);
+    }
+  }
+
+  {
+    struct list *p;
+    for (p = code_module_list; p != list_end(code_module_list); p = list_next(p)) {
+      struct init_code_module *cm = FIELD_PTR_TO_STRUCT_PTR(p, struct init_code_module, list_node);
+      inst_t   *q;
+      unsigned n;
+      for (q = cm->consts, n = cm->consts_size; n > 0; --n, ++q) {
+	mark(*q);
+      }
     }
   }
 
@@ -1807,6 +1828,28 @@ cm_file_new(void)
 }
 
 void
+cm_file_read(void)
+{
+  struct tokbuf tb[1];
+
+  tokbuf_init(tb);
+
+  FILE *fp = FILEVAL(MC_ARG(0))->fp;
+  char buf[256];
+
+  while (!feof(fp)) {
+    buf[sizeof(buf) - 1] = 0;
+    fgets(buf, sizeof(buf), fp);
+    tokbuf_append(tb, buf[sizeof(buf) - 1] != 0 ? sizeof(buf) : strlen(buf), buf);
+  }
+  tokbuf_append_char(tb, 0);
+
+  str_newc(MC_RESULT, 1, tb->len, tb->buf);
+
+  tokbuf_fini(tb);
+}
+
+void
 rep(inst_t *dst, bool interactf)
 {
   FRAME_WORK_BEGIN(1) {
@@ -1898,43 +1941,53 @@ module_new(inst_t *dst, inst_t name)
 void
 cm_module_new(void)
 {
-  FRAME_WORK_BEGIN(2) {
-    str_newc(&WORK(0), 1, 5, "path");
-    inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(0));
+  FRAME_WORK_BEGIN(3) {
+    str_newc(&WORK(2), 1, 5, "path");
+    inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
     if (p != 0) {
       p = CDR(p);
       if (!is_list(p))  p = 0;
     }
     if (p == 0) {
-      str_newc(&WORK(0), 1, 2, ".");
-      list_new(&WORK(0), WORK(0), 0);
-      p = WORK(0);
+      str_newc(&WORK(2), 1, 2, ".");
+      list_new(&WORK(2), WORK(2), 0);
+      p = WORK(2);
     }
 
     FILE *fp = 0;
-
-    for ( ; p != 0; p = CDR(p)) {
-      inst_t d = CAR(p);
-      if (inst_of(d) != consts.cl_str)  continue;
-      str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
-	                    2, "/",
-	                    STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
-	                    5, ".ool"
-	       );
-      fp = fopen(STRVAL(WORK(1))->data, "r");
-      if (fp != 0)  break;
-    }
-
-    if (fp == 0) {
-      error("Module not found");
-    }
+    void *dl = 0;
 
     module_new(&WORK(0), MC_ARG(1));
 
     FRAME_MODULE_BEGIN(WORK(0), WORK(0)) {
-      file_load(&WORK(1), fp);
+      for ( ; p != 0; p = CDR(p)) {
+	inst_t d = CAR(p);
+	if (inst_of(d) != consts.cl_str)  continue;
+	
+	str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
+		 2, "/",
+		 STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
+		 5, ".ool"
+		 );
+	fp = fopen(STRVAL(WORK(1))->data, "r");
+	if (fp != 0) {
+	  file_load(&WORK(1), fp);
+
+	  break;
+	}
+	
+	str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
+		 2, "/",
+		 STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
+		 4, ".so"
+		 );
+	dl = dlopen(STRVAL(WORK(1))->data, RTLD_NOW);
+	if (dl != 0)  break;
+      }
     } FRAME_MODULE_END;
 
+    if (fp == 0 && dl == 0)  error("Module not found");
+      
     dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
 
     inst_assign(MC_RESULT, WORK(0));
@@ -2019,14 +2072,20 @@ metaclass_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 }
 
 void
-cm_metaclass_new(void)
+metaclass_new(inst_t *dst, inst_t name, inst_t parent, inst_t inst_vars)
 {
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), consts.metaclass);
-    inst_init(WORK(0), 3, MC_ARG(1), MC_ARG(2), MC_ARG(3));
-    dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
+    inst_init(WORK(0), 3, name, parent, inst_vars);
+    dict_at_put(MODULE_CUR, name, WORK(0));
     inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
+}
+
+void
+cm_metaclass_new(void)
+{
+  metaclass_new(MC_RESULT, MC_ARG(1), MC_ARG(1), MC_ARG(3));
 }
 
 inst_t *
@@ -2182,14 +2241,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
   } FRAME_METHOD_CALL_END;
 }
 
-struct {
-  inst_t *cl, *name, *parent;
-  unsigned inst_size;
-  void (*init)(inst_t inst, inst_t cl, unsigned argc, va_list ap);
-  void (*walk)(inst_t inst, inst_t cl, void (*func)(inst_t));
-  void (*free)(inst_t inst, inst_t cl);
-  void (*cl_init)(inst_t cl);
-} init_cl_tbl[] = {
+struct init_cl init_cl_tbl[] = {
   { &consts.cl_object,      &consts.str_object,                      0, sizeof(struct inst),             object_init,      object_walk,      object_free },
   { &consts.cl_bool,        &consts.str_boolean,     &consts.cl_object, sizeof(struct inst_bool),        bool_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_int,         &consts.str_integer,     &consts.cl_object, sizeof(struct inst_int),         int_init,         inst_walk_parent, inst_free_parent },
@@ -2208,10 +2260,7 @@ struct {
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
 };
 
-struct {
-  inst_t *str;
-  char   *data;
-} init_str_tbl[] = {
+struct init_str init_str_tbl[] = {
   { &consts.str_addc,        "add:" },
   { &consts.str_andc,        "and:" },
   { &consts.str_atc,         "at:" },
@@ -2254,6 +2303,7 @@ struct {
   { &consts.str_object,      "#Object" },
   { &consts.str_pair,        "#Pair" },
   { &consts.str_quote,       "&quote" },
+  { &consts.str_read,        "read" },
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
   { &consts.str_tostring,    "tostring" },
@@ -2264,12 +2314,7 @@ struct {
   { &consts.str_writec,      "write:" }
 };
 
-struct {
-  inst_t   *cl;
-  unsigned ofs;
-  inst_t   *sel;
-  void     (*func)(void);
-} init_method_tbl[] = {
+struct init_method init_method_tbl[] = {
   { &consts.metaclass, CLASSVAL_OFS(cl_methods), &consts.str_newc_parentc_instancevariablesc, cm_metaclass_new },
 
   { &consts.metaclass, CLASSVAL_OFS(inst_methods), &consts.str_class_methods,      cm_cl_cl_methods },
@@ -2353,6 +2398,7 @@ struct {
 
   { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 
+  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_read, cm_file_read },
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load, cm_file_load },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
@@ -2365,6 +2411,7 @@ init(void)
 {
   mem_init();
   inst_list_init();
+  code_module_init();
 
   FRAME_WORK_BEGIN(1) {
     /* Pass 1 - Create metaclass */
@@ -2452,6 +2499,58 @@ init(void)
   } FRAME_WORK_END;
 
   initf = false;
+}
+
+void
+code_module_add(struct init_code_module *cm)
+{
+  list_insert(cm->list_node, list_end(code_module_list));
+
+  FRAME_WORK_BEGIN(1) {
+    unsigned i;
+    
+    for (i = 0; i < cm->init_str_size; ++i) {
+      str_newc(cm->init_str[i].str, 1, strlen(cm->init_str[i].data) + 1, cm->init_str[i].data);
+    }
+    
+    for (i = 0; i < cm->init_cl_size; ++i) {
+      inst_alloc(cm->init_cl[i].cl, consts.metaclass);
+      inst_assign(&CLASSVAL(*cm->init_cl[i].cl)->name,   *cm->init_cl[i].name);
+      inst_assign(&CLASSVAL(*cm->init_cl[i].cl)->module, MODULE_CUR);
+      inst_assign(&CLASSVAL(*cm->init_cl[i].cl)->parent, *cm->init_cl[i].parent);
+      strdict_new(&CLASSVAL(*cm->init_cl[i].cl)->cl_vars,    32);
+      strdict_new(&CLASSVAL(*cm->init_cl[i].cl)->cl_methods, 32);
+      strdict_new(&CLASSVAL(*cm->init_cl[i].cl)->inst_vars,    32);
+      strdict_new(&CLASSVAL(*cm->init_cl[i].cl)->inst_methods, 32);
+      CLASSVAL(*cm->init_cl[i].cl)->inst_size = cm->init_cl[i].inst_size;
+      CLASSVAL(*cm->init_cl[i].cl)->init = cm->init_cl[i].init;
+      CLASSVAL(*cm->init_cl[i].cl)->walk = cm->init_cl[i].walk;
+      CLASSVAL(*cm->init_cl[i].cl)->free = cm->init_cl[i].free;
+      if (cm->init_cl[i].cl_init != 0)  (*cm->init_cl[i].cl_init)(*cm->init_cl[i].cl);
+      dict_at_put(MODULE_CUR, *cm->init_cl[i].name, *cm->init_cl[i].cl);
+    }
+    
+    for (i = 0; i < cm->init_method_size; ++i) {
+      code_method_new(&WORK(0), cm->init_method[i].func);
+      dict_at_put(*(inst_t *)((char *)*cm->init_method[i].cl + cm->init_method[i].ofs), *cm->init_method[i].sel, WORK(0));
+    }
+  } FRAME_WORK_END;
+}
+
+void
+code_module_del(struct init_code_module *cm)
+{
+  unsigned i;
+  
+  for (i = 0; i < cm->init_cl_size; ++i) {
+    inst_release(*cm->init_cl[i].cl);
+  }
+
+  for (i = 0; i < cm->init_str_size; ++i) {
+    inst_release(*cm->init_str[i].str);
+  }
+
+  list_erase(cm->list_node);
 }
 
 void
