@@ -1,4 +1,5 @@
-CFLAGS	= -g -pg
+CFLAGS	= -g
+#CFLAGS	= -g -pg
 #CFLAGS	= -O3 -fomit-frame-pointer
 
 all:	ool

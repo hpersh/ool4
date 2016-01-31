@@ -5,6 +5,8 @@
 
 #include "ool.h"
 
+bool initf = true;
+
 struct list *
 list_insert(struct list *item, struct list *before)
 {
@@ -125,12 +127,33 @@ mem_init(void)
   for (i = 0; i < ARRAY_SIZE(mem_blk_info); ++i)  list_init(mem_blk_info[i].free_list);
 }
 
+unsigned mem_pages_alloced_collect_cnt;
+enum { MEM_PAGES_ALLOCED_COLLECT_LIMIT = 100 };
+
+void collect(void);
+
 void *
 mem_pages_alloc(unsigned npages)
 {
-  void *p = mmap((void *) 0, npages << MEM_PAGE_SIZE_LOG2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-  
-  assert(p != 0);
+  bool collectf = false;
+
+  if (!initf) {
+    mem_pages_alloced_collect_cnt += npages;
+    if (mem_pages_alloced_collect_cnt >= MEM_PAGES_ALLOCED_COLLECT_LIMIT) {
+      collect();
+      collectf = true;
+      mem_pages_alloced_collect_cnt = 0;      
+    }
+  }
+
+  void *p;
+  for (;;) {
+    p = mmap((void *) 0, npages << MEM_PAGE_SIZE_LOG2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (p != 0)  break;
+    assert(!collectf);
+    collect();
+    collectf = true;
+  }
 
   stats->mem->pages_alloced += npages;
   if ((stats->mem->pages_in_use += npages) > stats->mem->pages_in_use_max) {
@@ -289,14 +312,94 @@ frame_jmp(struct frame_jmp *fr, int code)
   longjmp(fr->jmp_buf, code);
 }
 
+struct {
+  struct list active[1], collect[1];
+} inst_list;
+
+void
+inst_list_init(void)
+{
+  list_init(inst_list.active);
+  list_init(inst_list.collect);
+}
+
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
   inst_t inst = (inst_t) mem_alloc(CLASSVAL(cl)->inst_size, true);
 
+  list_insert(inst->list_node, list_end(inst_list.active));
+  
   inst_assign(&inst->inst_of, cl);
   
   inst_assign(dst, inst);
+}
+
+void mark(inst_t inst);
+
+  void
+metaclass_mark(inst_t inst)
+{
+  mark(CLASSVAL(inst)->name);
+  mark(CLASSVAL(inst)->module);
+  mark(CLASSVAL(inst)->parent);
+  mark(CLASSVAL(inst)->cl_vars);
+  mark(CLASSVAL(inst)->cl_methods);
+  mark(CLASSVAL(inst)->inst_vars);
+  mark(CLASSVAL(inst)->inst_methods);
+}
+
+void
+mark(inst_t inst)
+{
+  if (inst == 0 || ++inst->ref_cnt > 1)  return;
+
+  list_erase(inst->list_node);
+  list_insert(inst->list_node, list_end(inst_list.active));
+  
+  inst_t cl = inst_of(cl);
+  if (cl == 0) {
+    metaclass_mark(inst);
+    return;
+  }
+  (*CLASSVAL(cl)->walk)(inst, cl, mark);
+}
+
+void
+collect(void)
+{
+  {
+    struct list temp = *inst_list.active;
+    *inst_list.active = *inst_list.collect;
+    *inst_list.collect = temp;
+  }
+
+  {
+    struct frame_work *p;
+    for (p = wfp; p != 0; p = p->prev) {
+      inst_t   *q;
+      unsigned n;
+      for (q = p->data, n = p->size; n > 0; --n, ++q)  mark(*q);
+    }
+  }
+
+  {
+    inst_t   *p;
+    unsigned n;
+    for (p = (inst_t *) &consts, n = sizeof(consts) / sizeof(inst_t); n > 0; --n, ++p) {
+      mark(*p);
+    }
+  }
+
+  {
+    while (!list_empty(inst_list.collect)) {
+      struct list *p = list_first(inst_list.collect);
+      list_erase(p);
+      inst_t inst = FIELD_PTR_TO_STRUCT_PTR(p, struct inst, list_node);
+      inst_t cl = inst_of(inst);
+      (*CLASSVAL(cl)->free)(inst, cl);
+    }
+  }
 }
 
 void
@@ -482,6 +585,8 @@ object_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 void
 object_free(inst_t inst, inst_t cl)
 {
+  list_erase(inst->list_node);
+
   mem_free(inst, CLASSVAL(inst_of(inst))->inst_size);
 }
 
@@ -719,12 +824,6 @@ code_method_new(inst_t *dst, void (*func)(void))
 {
   inst_alloc(dst, consts.cl_code_method);
   inst_init(*dst, 1, func);
-}
-
-static inline bool
-is_list(inst_t inst)
-{
-  return (inst == 0 || inst_of(inst) == consts.cl_list);
 }
 
 void
@@ -2235,11 +2334,13 @@ void
 init(void)
 {
   mem_init();
+  inst_list_init();
 
   FRAME_WORK_BEGIN(1) {
     /* Pass 1 - Create metaclass */
 
     inst_assign(&consts.metaclass, (inst_t) mem_alloc(sizeof(struct inst_metaclass), true));
+    list_insert(consts.metaclass->list_node, list_end(inst_list.active));
     CLASSVAL(consts.metaclass)->inst_size = sizeof(struct inst_metaclass);
     CLASSVAL(consts.metaclass)->init      = metaclass_init;
     CLASSVAL(consts.metaclass)->walk      = metaclass_walk;
@@ -2319,6 +2420,8 @@ init(void)
       if (init_cl_tbl[i].cl_init != 0) (*init_cl_tbl[i].cl_init)(*init_cl_tbl[i].cl);
     }    
   } FRAME_WORK_END;
+
+  initf = false;
 }
 
 void

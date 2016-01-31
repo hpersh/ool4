@@ -10,13 +10,3 @@
 ]
 
 [[Complex class-methods] @ new = {(cl) [Complex new: (0, 0)]}]
-
-[z1 =! [Complex new]]
-
-[z1 @ re]
-[z1 @ im]
-
-[z2 =! [Complex new: (13, -42)]]
-
-[z2 @ re]
-[z2 @ im]

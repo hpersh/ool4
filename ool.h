@@ -75,6 +75,7 @@ struct inst;
 typedef struct inst *inst_t;
 
 struct inst {
+  struct list list_node[1];
   unsigned    ref_cnt;
   inst_t      inst_of;
 };
@@ -285,6 +286,12 @@ inst_of(inst_t inst)
 
 unsigned is_subclass_of(inst_t cl1, inst_t cl2);
 unsigned is_kind_of(inst_t inst, inst_t cl);
+
+static inline bool
+is_list(inst_t inst)
+{
+  return (inst == 0 || inst_of(inst) == consts.cl_list);
+}
 
 static inline void
 inst_assign(inst_t *dst, inst_t src)
