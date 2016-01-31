@@ -137,20 +137,18 @@ mem_pages_alloc(unsigned npages)
 {
   bool collectf = false;
 
-  if (!initf) {
-    mem_pages_alloced_collect_cnt += npages;
-    if (mem_pages_alloced_collect_cnt >= MEM_PAGES_ALLOCED_COLLECT_LIMIT) {
-      collect();
-      collectf = true;
-      mem_pages_alloced_collect_cnt = 0;      
-    }
+  mem_pages_alloced_collect_cnt += npages;
+  if (!initf && mem_pages_alloced_collect_cnt >= MEM_PAGES_ALLOCED_COLLECT_LIMIT) {
+    collect();
+    collectf = true;
+    mem_pages_alloced_collect_cnt = 0;      
   }
 
   void *p;
   for (;;) {
     p = mmap((void *) 0, npages << MEM_PAGE_SIZE_LOG2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     if (p != 0)  break;
-    assert(!collectf);
+    if (collectf)  fatal("Out of memory");
     collect();
     collectf = true;
   }
@@ -487,6 +485,13 @@ backtrace(void)
       fprintf(stderr, ")\n");
     }
   } FRAME_WORK_END;
+}
+
+void
+fatal(char *msg)
+{
+  fprintf(stderr, "%s\n", msg);
+  exit(1);
 }
 
 unsigned err_lvl;

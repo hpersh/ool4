@@ -656,3 +656,4 @@ frame_input_pop(void)
   }
 
 void error(char *msg);
+void fatal(char *msg);
