@@ -212,6 +212,7 @@ struct {
   inst_t cl_object;
   inst_t cl_bool;
   inst_t cl_int;
+  inst_t cl_float;
   inst_t cl_code_method;
   inst_t cl_str;
   inst_t cl_dptr;
@@ -249,6 +250,7 @@ struct {
   inst_t str_evalc;
   inst_t str_false;
   inst_t str_file;
+  inst_t str_float;
   inst_t str_hash;
   inst_t str_instance_methods;
   inst_t str_instance_variables;

@@ -410,6 +410,118 @@ parse_block(inst_t *dst)
   return (result);
 }
 
+bool
+tok_is_float(void)
+{
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  char     *p = tb->buf, c;
+  unsigned n  = tb->len - 1, k;
+
+  if (n == 0)  return (false);
+
+  if (*p == '-') {
+    ++p;  --n;
+  }
+
+  for (k = 0; n > 0; --n, ++p, ++k) {
+    c = *p;
+    if (isdigit(c))  continue;
+    if (c == '.')  goto decimal;
+    if (toupper(c) == 'E')  goto exponent;
+    return (false);
+  }
+  return (k >= 1);
+
+ decimal:
+  for (++p, --n; n > 0; --n, ++p) {
+    c = *p;
+    if (isdigit(c)) continue;
+    if (toupper(c) == 'E')  goto exponent;
+    return (false);
+  }
+  return (true);
+
+ exponent:
+  ++p;  --n;
+
+  if (n == 0)  return (false);
+
+  if (*p == '-') {
+    ++p;  --n;
+  }
+
+  for (k = 0; n > 0; --n, ++p, ++k) {
+    if (isdigit(*p))  continue;
+    return (false);
+  }
+  return (k >= 1);
+}
+
+unsigned
+parse_float(inst_t *dst)
+{
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  floatval_t    val;
+
+  sscanf(tb->buf, "%Lg", &val);
+  float_new(dst, val);
+
+  return (true);
+}
+
+bool
+tok_is_int(void)
+{
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  char     *p = tb->buf, c;
+  unsigned n  = tb->len - 1, k;
+
+  if (n == 0)  return (false);
+
+  if (n >= 2 && p[0] == '0' && toupper(p[1]) == 'X') {
+    p += 2;  n -= 2;
+
+    for (k = 0; n > 0; --n, ++p, ++k) {
+      c = *p;
+      if (isxdigit(c))  continue;
+      return (false);
+    }
+    return (k >= 1);
+  }
+
+  if (*p == '-') {
+    ++p;  --n;
+  }
+
+  for (k = 0; n > 0; --n, ++p, ++k) {
+    c = *p;
+    if (isdigit(c))  continue;
+    return (false);
+  }
+  return (k >= 1);
+}
+
+unsigned
+parse_int(inst_t *dst)
+{
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  char          *fmt, *s;
+  intval_t      val;
+
+  if (tb->len >= 3 && tb->buf[0] == '0' && toupper(tb->buf[1]) == 'X') {
+    fmt = "%llx";
+    s   = tb->buf + 2;
+  } else {
+    fmt = "%lld";
+    s   = tb->buf;
+  }
+
+  sscanf(s, fmt, &val);
+  int_new(dst, val);
+
+  return (true);
+}
+
 unsigned
 parse_str(inst_t *dst)
 {
@@ -454,30 +566,10 @@ parse_token(inst_t *dst)
     return (true);
   }
 
-  p = tb->buf;
-  n = tb->len;
+  if (tok_is_int())    return (parse_int(dst));
+  if (tok_is_float())  return (parse_float(dst));
 
-  negf = false;
-  if (*p == '-') {
-    negf = true;
-    
-    ++p;
-    --n;
-  }
-
-  for ( ; n > 1 && *p >= '0' && *p <= '9'; --n, ++p);
-  
-  if (n > 1) {
-    parse_str(dst);
-  } else {
-    intval_t val;
-    
-    sscanf(tb->buf, "%lld", &val);
-
-    int_new(dst, val);
-  }
-
-  return (true);
+  return (parse_str(dst));
 }
 
 unsigned

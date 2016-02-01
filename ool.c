@@ -857,6 +857,33 @@ cm_int_tostring(void)
 }
 
 void
+float_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+  
+  FLOATVAL(inst) = va_arg(ap, floatval_t);
+  --argc;
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
+float_new(inst_t *dst, floatval_t val)
+{
+  inst_alloc(dst, consts.cl_float);
+  inst_init(*dst, 1, val);
+}
+
+void
+cm_float_tostring(void)
+{
+  char buf[128];
+
+  snprintf(buf, sizeof(buf), "%Lg", FLOATVAL(MC_ARG(0)));
+  str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
+}
+
+void
 code_method_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 2);
@@ -2252,6 +2279,7 @@ struct init_cl init_cl_tbl[] = {
   { &consts.cl_object,      &consts.str_object,                      0, sizeof(struct inst),             object_init,      object_walk,      object_free },
   { &consts.cl_bool,        &consts.str_boolean,     &consts.cl_object, sizeof(struct inst_bool),        bool_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_int,         &consts.str_integer,     &consts.cl_object, sizeof(struct inst_int),         int_init,         inst_walk_parent, inst_free_parent },
+  { &consts.cl_float,       &consts.str_float,       &consts.cl_object, sizeof(struct inst_float),       float_init,       inst_walk_parent, inst_free_parent },
   { &consts.cl_code_method, &consts.str_code_method, &consts.cl_object, sizeof(struct inst_code_method), code_method_init, code_method_walk, inst_free_parent },
   { &consts.cl_str,         &consts.str_string,      &consts.cl_object, sizeof(struct inst_str),         str_init,         inst_walk_parent, str_free },
   { &consts.cl_dptr,        &consts.str_dptr,        &consts.cl_object, sizeof(struct inst_dptr),        dptr_init,        dptr_walk,        inst_free_parent },
@@ -2291,6 +2319,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_evalc,       "eval:" },
   { &consts.str_false,       "#false" },
   { &consts.str_file,        "#File" },
+  { &consts.str_float,       "#Float" },
   { &consts.str_hash,        "hash" },
   { &consts.str_instance_methods, "instance-methods" },
   { &consts.str_instance_variables, "instance-variables" },
@@ -2351,6 +2380,8 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_int_equal },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_ltc,      cm_int_lt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
+
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_float_tostring },
 
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_hash,     cm_str_hash },
