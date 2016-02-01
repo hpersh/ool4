@@ -186,6 +186,7 @@ struct inst_module {
   struct inst_set base[1];
   struct {
     inst_t name;
+    void   *dl;
   } val[1];
 };
 #define MODULEVAL(x)  (((struct inst_module *)(x))->val)

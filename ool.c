@@ -1963,6 +1963,14 @@ module_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 }
 
 void
+module_free(inst_t inst, inst_t cl)
+{
+  if (MODULEVAL(inst)->dl != 0)  dlclose(MODULEVAL(inst)->dl);
+
+  inst_free_parent(inst, cl);
+}
+
+void
 module_new(inst_t *dst, inst_t name)
 {
   FRAME_WORK_BEGIN(1) {
@@ -2006,6 +2014,7 @@ cm_module_new(void)
 	fp = fopen(STRVAL(WORK(1))->data, "r");
 	if (fp != 0) {
 	  file_load(&WORK(1), fp);
+	  fclose(fp);
 
 	  break;
 	}
@@ -2016,7 +2025,10 @@ cm_module_new(void)
 		 4, ".so"
 		 );
 	dl = dlopen(STRVAL(WORK(1))->data, RTLD_NOW);
-	if (dl != 0)  break;
+	if (dl != 0) {
+	  MODULEVAL(WORK(0))->dl = dl;
+	  break;
+	}
       }
     } FRAME_MODULE_END;
 
@@ -2119,7 +2131,7 @@ metaclass_new(inst_t *dst, inst_t name, inst_t parent, inst_t inst_vars)
 void
 cm_metaclass_new(void)
 {
-  metaclass_new(MC_RESULT, MC_ARG(1), MC_ARG(1), MC_ARG(3));
+  metaclass_new(MC_RESULT, MC_ARG(1), MC_ARG(2), MC_ARG(3));
 }
 
 inst_t *
@@ -2290,7 +2302,7 @@ struct init_cl init_cl_tbl[] = {
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        inst_walk_parent, file_free,        file_cl_init },
-  { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      inst_free_parent, module_cl_init },
+  { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      module_free,      module_cl_init },
   { &consts.cl_env,         &consts.str_environment, &consts.cl_object, sizeof(struct inst) },
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
 };
