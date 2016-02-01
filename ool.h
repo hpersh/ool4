@@ -107,10 +107,13 @@ void float_new(inst_t *dst, floatval_t val);
 
 struct inst_code_method {
   struct inst base[1];
-  void        (*val)(void);
+  struct {
+    inst_t module;
+    void   (*func)(void);
+  } val[1];
 };
 #define CODEMETHODVAL(x)  (((struct inst_code_method *)(x))->val)
-void code_method_new(inst_t *dst, void (*func)(void));
+void code_method_new(inst_t *dst, inst_t module, void (*func)(void));
 
 struct inst_str {
   struct inst base[1];

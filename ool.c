@@ -859,19 +859,28 @@ cm_int_tostring(void)
 void
 code_method_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc >= 1);
+  assert(argc >= 2);
 
-  CODEMETHODVAL(inst) = va_arg(ap, void (*)(void));
-  --argc;
+  inst_assign(&CODEMETHODVAL(inst)->module, va_arg(ap, inst_t));
+  CODEMETHODVAL(inst)->func = va_arg(ap, void (*)(void));
+  argc -= 2;
   
   inst_init_parent(inst, cl, argc, ap);
 }
 
 void
-code_method_new(inst_t *dst, void (*func)(void))
+code_method_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
+{
+  (*func)(CODEMETHODVAL(inst)->module);
+
+  inst_walk_parent(inst, cl, func);
+}
+
+void
+code_method_new(inst_t *dst, inst_t module, void (*func)(void))
 {
   inst_alloc(dst, consts.cl_code_method);
-  inst_init(*dst, 1, func);
+  inst_init(*dst, 2, module, func);
 }
 
 void
@@ -889,7 +898,7 @@ cm_code_method_eval(void)
       inst_assign(p, CAR(q));
     }
 
-    void (*f)(void) = CODEMETHODVAL(MC_ARG(0));
+    void (*f)(void) = CODEMETHODVAL(MC_ARG(0))->func;
     
     FRAME_METHOD_CALL_BEGIN(MC_RESULT, 0, 0, nargs, &WORK(0)) {
       (*f)();
@@ -2191,7 +2200,7 @@ method_run(inst_t m)
 {
   inst_t cl = inst_of(m);
   if (cl == consts.cl_code_method) {
-    (*CODEMETHODVAL(m))();
+    (*CODEMETHODVAL(m)->func)();
     return;
   }
   if (cl == consts.cl_block) {
@@ -2243,7 +2252,7 @@ struct init_cl init_cl_tbl[] = {
   { &consts.cl_object,      &consts.str_object,                      0, sizeof(struct inst),             object_init,      object_walk,      object_free },
   { &consts.cl_bool,        &consts.str_boolean,     &consts.cl_object, sizeof(struct inst_bool),        bool_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_int,         &consts.str_integer,     &consts.cl_object, sizeof(struct inst_int),         int_init,         inst_walk_parent, inst_free_parent },
-  { &consts.cl_code_method, &consts.str_code_method, &consts.cl_object, sizeof(struct inst_code_method), code_method_init, inst_walk_parent, inst_free_parent },
+  { &consts.cl_code_method, &consts.str_code_method, &consts.cl_object, sizeof(struct inst_code_method), code_method_init, code_method_walk, inst_free_parent },
   { &consts.cl_str,         &consts.str_string,      &consts.cl_object, sizeof(struct inst_str),         str_init,         inst_walk_parent, str_free },
   { &consts.cl_dptr,        &consts.str_dptr,        &consts.cl_object, sizeof(struct inst_dptr),        dptr_init,        dptr_walk,        inst_free_parent },
   { &consts.cl_pair,        &consts.str_pair,        &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
@@ -2459,14 +2468,7 @@ init(void)
       strdict_new(&CLASSVAL(*init_cl_tbl[i].cl)->inst_methods, 32);
     }  
 
-    /* Pass 5 - Create methods */
-
-    for (i = 0; i < ARRAY_SIZE(init_method_tbl); ++i) {
-      code_method_new(&WORK(0), init_method_tbl[i].func);
-      dict_at_put(*(inst_t *)((char *)*init_method_tbl[i].cl + init_method_tbl[i].ofs), *init_method_tbl[i].sel, WORK(0));
-    }
-
-    /* Pass 6 - Create main module */
+    /* Pass 5 - Create main module */
 
     module_new(&consts.module_main, consts.str_main);
     dict_at_put(consts.module_main, consts.str_main, consts.module_main);
@@ -2481,13 +2483,20 @@ init(void)
       dict_at_put(consts.module_main, *init_cl_tbl[i].name, *init_cl_tbl[i].cl);
     }
 
-    /* Pass 7 - Fix up classes */
+    /* Pass 6 - Fix up classes */
 
     inst_assign(&CLASSVAL(consts.metaclass)->module, consts.module_main);
 
     for (i = 0; i < ARRAY_SIZE(init_cl_tbl); ++i) {
       inst_assign(&CLASSVAL(*init_cl_tbl[i].cl)->module, consts.module_main);
     }    
+
+    /* Pass 7 - Create methods */
+
+    for (i = 0; i < ARRAY_SIZE(init_method_tbl); ++i) {
+      code_method_new(&WORK(0), consts.module_main, init_method_tbl[i].func);
+      dict_at_put(*(inst_t *)((char *)*init_method_tbl[i].cl + init_method_tbl[i].ofs), *init_method_tbl[i].sel, WORK(0));
+    }
 
     /* Pass 8 - Init classes */
 
@@ -2529,7 +2538,7 @@ code_module_add(struct init_code_module *cm)
     }
     
     for (i = 0; i < cm->init_method_size; ++i) {
-      code_method_new(&WORK(0), cm->init_method[i].func);
+      code_method_new(&WORK(0), MODULE_CUR, cm->init_method[i].func);
       dict_at_put(*(inst_t *)((char *)*cm->init_method[i].cl + cm->init_method[i].ofs), *cm->init_method[i].sel, WORK(0));
     }
   } FRAME_WORK_END;
