@@ -274,9 +274,7 @@ inst_retain(inst_t inst)
 void
 inst_release(inst_t inst)
 {
-  if (inst == 0)  return;
-
-  assert(inst->ref_cnt != 0);
+  if (inst == 0 || inst->ref_cnt == 0)  return;
 
   if (--inst->ref_cnt == 0)  inst_free(inst);
 }
@@ -2542,6 +2540,10 @@ code_module_del(struct init_code_module *cm)
 {
   unsigned i;
   
+  for (i = 0; i < cm->init_method_size; ++i) {
+    dict_del(*(inst_t *)((char *)*cm->init_method[i].cl + cm->init_method[i].ofs), *cm->init_method[i].sel);
+  }
+
   for (i = 0; i < cm->init_cl_size; ++i) {
     inst_release(*cm->init_cl[i].cl);
   }
