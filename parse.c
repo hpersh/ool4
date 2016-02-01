@@ -533,6 +533,47 @@ parse_str(inst_t *dst)
 }
 
 unsigned
+parse_quoted_str(inst_t *dst)
+{
+  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+
+  char     *p = tb->buf + 1, c;
+  unsigned n  = tb->len - 3;
+
+  while (n > 0) {
+    if (*p == '\\') {
+      if (n <= 1)  return (false);
+      switch (p[1]) {
+      case 'n':
+	c = '\n';
+      replace1:
+	*p = c;
+	memmove(p + 1, p + 2, n - 2);
+	--tb->len;
+	++p;  n -= 2;
+	continue;
+      case 'r':
+	c = '\r';
+	goto replace1;
+      case 't':
+	c = '\t';
+	goto replace1;
+      case '\\':
+	c = '\\';
+	goto replace1;
+      }      
+    }
+
+    ++p;
+    --n;
+  }
+
+  str_newc(dst, 1, tb->len - 2, tb->buf + 1);
+  
+  return (true);
+}
+
+unsigned
 parse_token(inst_t *dst)
 {
   unsigned result;
@@ -560,10 +601,7 @@ parse_token(inst_t *dst)
   }
 
   if (tb->len >= 2 && tb->buf[0] == '`') {
-    tb->buf[tb->len - 2] = 0;
-    str_newc(dst, 1, tb->len - 2, tb->buf + 1);
-      
-    return (true);
+    return (parse_quoted_str(dst));
   }
 
   if (tok_is_int())    return (parse_int(dst));

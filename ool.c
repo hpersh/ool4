@@ -2,6 +2,8 @@
 #include <stdarg.h>
 #include <sys/mman.h>
 #include <dlfcn.h>
+#include <sys/types.h>
+#include <regex.h>
 #include <assert.h>
 
 #include "ool.h"
@@ -1119,6 +1121,69 @@ cm_str_write(void)
     str_newc(&WORK(0), 1, 2, "\"");
     str__write(&WORK(1), MC_ARG(0));
     str_newv(MC_RESULT, 2, &WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_str_join(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  if (!is_list(MC_ARG(1)))                    error_bad_arg(MC_ARG(1));
+  
+  unsigned n = list_len(MC_ARG(1));
+  if (n == 0) {
+    str_newc(MC_RESULT, 1, 1, "");
+    return;
+  }
+
+  FRAME_WORK_BEGIN(1) {
+    array_new(&WORK(0), 2 * n - 1);
+    inst_t p, *q;
+    for (q = ARRAYVAL(WORK(0))->data, p = MC_ARG(1); p != 0; p = CDR(p)) {
+      if (p != MC_ARG(1)) {
+	inst_assign(q, MC_ARG(0));
+	++q;
+      }
+
+      inst_t r = CAR(p);
+      if (!is_kind_of(r, consts.cl_str))  error_bad_arg(MC_ARG(1));
+      inst_assign(q, r);
+      ++q;
+    }
+
+    str_newv(MC_RESULT, ARRAYVAL(WORK(0))->size, ARRAYVAL(WORK(0))->data);
+  } FRAME_WORK_END;
+}
+
+void
+cm_str_split(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_str))  error_bad_arg(MC_ARG(1));	
+  
+  regex_t regex[1];
+  if (regcomp(regex, STRVAL(MC_ARG(1))->data, 0) != 0) {
+    error_bad_arg(MC_ARG(1));
+  }
+
+  char *s = STRVAL(MC_ARG(0))->data;
+  regmatch_t match[1];
+  int rc = regexec(regex, s, ARRAY_SIZE(match), match, 0);
+  regfree(regex);
+  if (!(rc == 0 || rc == REG_NOMATCH)) {
+    error("Match failure");
+  }
+
+  FRAME_WORK_BEGIN(2) {
+    str_newc(&WORK(1), 1, STRVAL(MC_ARG(0))->size - match->rm_eo, s + match->rm_eo);
+    list_new(&WORK(0), WORK(1), 0);
+    str_newc(&WORK(1), 1, match->rm_eo - match->rm_so + 1, s + match->rm_so);
+    list_new(&WORK(0), WORK(1), WORK(0));
+    str_newc(&WORK(1), 1, match->rm_so + 1, s);
+    list_new(&WORK(0), WORK(1), WORK(0));
+    inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
 }
 
@@ -2336,6 +2401,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_instance_methods, "instance-methods" },
   { &consts.str_instance_variables, "instance-variables" },
   { &consts.str_integer,     "#Integer" },
+  { &consts.str_joinc,       "join:" },
   { &consts.str_keys,        "keys" },
   { &consts.str_list,        "#List" },
   { &consts.str_load,        "load" },
@@ -2352,6 +2418,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_pair,        "#Pair" },
   { &consts.str_quote,       "&quote" },
   { &consts.str_read,        "read" },
+  { &consts.str_splitc,      "split:" },
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
   { &consts.str_tostring,    "tostring" },
@@ -2401,6 +2468,8 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_str_tostring },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_str__write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_joinc,    cm_str_join },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_splitc,   cm_str_split },
 
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_car, cm_dptr_car },
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_cdr, cm_dptr_cdr },

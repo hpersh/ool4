@@ -256,6 +256,7 @@ struct {
   inst_t str_instance_methods;
   inst_t str_instance_variables;
   inst_t str_integer; 
+  inst_t str_joinc;
   inst_t str_keys;
   inst_t str_list;
   inst_t str_load;
@@ -273,6 +274,7 @@ struct {
   inst_t str_quote;
   inst_t str_read;
   inst_t str_string;
+  inst_t str_splitc;
   inst_t str_system;
   inst_t str_tostring;
   inst_t str_true;
