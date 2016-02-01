@@ -9,4 +9,24 @@
 	  }
 ]
 
-[[Complex class-methods] @ new = {(cl) [Complex new: (0, 0)]}]
+[[Complex class-methods] @ new = {(cl) [Complex new: (0.0, 0.0)]}]
+
+[[Complex instance-methods] @ tostring =
+	{(z) [(([[z @ im] equal: 0.0], [[z @ re] tostring])
+	       (#true, ["`' join: ([(([[z @ re] equal: 0.0], "`')
+	                             (#true, [[z @ re] tostring])
+	                            ) &cond
+	                           ]
+				   [(([[[[z @ re] equal: 0.0] not] and: [[z @ im] gt: 0.0]], "`+')
+	                             (#true, "`')
+ 	                            ) &cond
+		                   ]
+	                           [[z @ im] tostring]
+				   "i
+			          )
+	               ]
+	        )
+               ) &cond
+             ]
+	}
+]

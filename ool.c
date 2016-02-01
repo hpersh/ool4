@@ -741,6 +741,12 @@ cm_obj_atput(void)
 }
 
 void
+cm_obj_inst_of(void)
+{
+  inst_assign(MC_RESULT, inst_of(MC_ARG(0)));
+}
+
+void
 bool_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 1);
@@ -766,6 +772,15 @@ cm_bool_and(void)
   if (!is_kind_of(MC_ARG(1), consts.cl_bool))  error_bad_arg(MC_ARG(1));
 
   bool_new(MC_RESULT, BOOLVAL(MC_ARG(0)) && BOOLVAL(MC_ARG(1)));
+}
+
+void
+cm_bool_not(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_bool))  error_bad_arg(MC_ARG(0));
+
+  bool_new(MC_RESULT, !BOOLVAL(MC_ARG(0)));
 }
 
 void
@@ -874,6 +889,26 @@ float_new(inst_t *dst, floatval_t val)
 {
   inst_alloc(dst, consts.cl_float);
   inst_init(*dst, 1, val);
+}
+
+void
+cm_float_equal(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_float))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_float))  error_bad_arg(MC_ARG(1));
+
+  bool_new(MC_RESULT, FLOATVAL(MC_ARG(0)) == FLOATVAL(MC_ARG(1)));
+}
+
+void
+cm_float_gt(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_float))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_float))  error_bad_arg(MC_ARG(1));
+
+  bool_new(MC_RESULT, FLOATVAL(MC_ARG(0)) > FLOATVAL(MC_ARG(1)));
 }
 
 void
@@ -1329,6 +1364,27 @@ cm_list_tostring_write(void)
     str_newc(p, 1, 2, ")");
 
     str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
+  } FRAME_WORK_END;
+}
+
+void
+cm_list_cond(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+
+  FRAME_WORK_BEGIN(1) {
+    inst_t p;
+    for (p = MC_ARG(0); p != 0; p = CDR(p)) {
+      inst_t q = CAR(p);
+      if (inst_of(q) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
+      inst_method_call(&WORK(0), consts.str_eval, 1, &CAR(q));
+      if (inst_of(WORK(0)) == consts.cl_bool && BOOLVAL(WORK(0))) {
+	inst_method_call(&WORK(0), consts.str_eval, 1, &CDR(q));
+	break;
+      }
+    }
+    inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
 }
 
@@ -2387,6 +2443,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_class_methods, "class-methods" },
   { &consts.str_class_variables, "class-variables" },
   { &consts.str_code_method, "#Code_Method" },
+  { &consts.str_cond,        "&cond" },
   { &consts.str_delc,        "del:" },
   { &consts.str_dictionary,  "#Dictionary" },
   { &consts.str_dptr,        "#Dptr" },
@@ -2397,8 +2454,10 @@ struct init_str init_str_tbl[] = {
   { &consts.str_false,       "#false" },
   { &consts.str_file,        "#File" },
   { &consts.str_float,       "#Float" },
+  { &consts.str_gtc,         "gt:" },
   { &consts.str_hash,        "hash" },
   { &consts.str_instance_methods, "instance-methods" },
+  { &consts.str_instance_of, "instance-of" },
   { &consts.str_instance_variables, "instance-variables" },
   { &consts.str_integer,     "#Integer" },
   { &consts.str_joinc,       "join:" },
@@ -2415,6 +2474,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_newc_modec,  "new:mode:" },
   { &consts.str_newc_parentc_instancevariablesc, "new:parent:instance-variables:"},
   { &consts.str_object,      "#Object" },
+  { &consts.str_not,         "not" },
   { &consts.str_pair,        "#Pair" },
   { &consts.str_quote,       "&quote" },
   { &consts.str_read,        "read" },
@@ -2442,16 +2502,18 @@ struct init_method init_method_tbl[] = {
 
   { &consts.cl_object, CLASSVAL_OFS(cl_methods), &consts.str_new, cm_obj_new },
 
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_quote,    cm_obj_quote },
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_obj_eval },
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_whilec,   cm_obj_while },
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_obj_tostring },
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_obj_write },
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_obj_write },
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc,      cm_obj_at },
-  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc, cm_obj_atput },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_quote,       cm_obj_quote },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_eval,        cm_obj_eval },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_whilec,      cm_obj_while },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tostring,    cm_obj_tostring },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str__write,      cm_obj_write },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_write,       cm_obj_write },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc,         cm_obj_at },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc,    cm_obj_atput },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_instance_of, cm_obj_inst_of },
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc,     cm_bool_and },
+  { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_not,      cm_bool_not },
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_bool_tostring },
 
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_hash,     cm_int_hash },
@@ -2460,6 +2522,8 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_ltc,      cm_int_lt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_float_equal },
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_gtc,      cm_float_gt },
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_float_tostring },
 
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
@@ -2483,6 +2547,7 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring_write },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_list_tostring_write },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_list_tostring_write },
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_cond,     cm_list_cond },
 
   { &consts.cl_code_method, CLASSVAL_OFS(inst_methods), &consts.str_evalc, cm_code_method_eval },
 

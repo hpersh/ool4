@@ -242,6 +242,7 @@ struct {
   inst_t str_class_methods;
   inst_t str_class_variables;
   inst_t str_code_method;
+  inst_t str_cond;
   inst_t str_delc;
   inst_t str_dictionary;
   inst_t str_dptr;
@@ -251,9 +252,11 @@ struct {
   inst_t str_evalc;
   inst_t str_false;
   inst_t str_file;
+  inst_t str_gtc;
   inst_t str_float;
   inst_t str_hash;
   inst_t str_instance_methods;
+  inst_t str_instance_of;
   inst_t str_instance_variables;
   inst_t str_integer; 
   inst_t str_joinc;
@@ -270,6 +273,7 @@ struct {
   inst_t str_newc;
   inst_t str_newc_modec;
   inst_t str_newc_parentc_instancevariablesc;
+  inst_t str_not;
   inst_t str_pair;
   inst_t str_quote;
   inst_t str_read;
