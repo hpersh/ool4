@@ -291,6 +291,7 @@ struct {
   inst_t str_pair;
   inst_t str_quote;
   inst_t str_read;
+  inst_t str_readc;
   inst_t str_string;
   inst_t str_splitc;
   inst_t str_system;
@@ -301,6 +302,10 @@ struct {
   inst_t str_write;
   inst_t str_writec;
 } consts;
+
+void inst_init_parent(inst_t inst, inst_t cl, unsigned argc, va_list ap);
+void inst_walk_parent(inst_t inst, inst_t cl, void (*func)(inst_t));
+void inst_free_parent(inst_t inst, inst_t cl);
 
 inst_t inst_retain(inst_t inst);
 void   inst_release(inst_t inst);

@@ -2,7 +2,7 @@ CFLAGS	= -g
 #CFLAGS	= -g -pg
 #CFLAGS	= -O3 -fomit-frame-pointer
 
-all:	ool math.so process.so
+all:	ool math.so process.so socket.so
 
 ool: ool.c parse.c ool.h
 	gcc $(CFLAGS) -Wl,-export-dynamic -o ool ool.c parse.c -ldl
@@ -15,8 +15,12 @@ process.so: process.c ool.h
 	gcc -c $(CFLAGS) -fPIC process.c
 	gcc -shared -o process.so process.o
 
+socket.so: socket.c ool.h
+	gcc -c $(CFLAGS) -fPIC socket.c
+	gcc -shared -o socket.so socket.o
+
 test:
-	gcc ool.c parse.c process.c -ldl
+	gcc ool.c parse.c socket.c -ldl
 
 .PHONY:	clean
 

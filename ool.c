@@ -1851,6 +1851,10 @@ dict_at_put(inst_t dict, inst_t key, inst_t val)
     return;
   }
 
+  if (inst_of(key) == consts.cl_str && STRVAL(key)->size > 1 && STRVAL(key)->data[0] == '#') {
+    error("Cannot change constant");
+  }
+
   inst_assign(&CDR(CAR(*p)), val);
 }
 
@@ -2560,6 +2564,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_pair,        "#Pair" },
   { &consts.str_quote,       "&quote" },
   { &consts.str_read,        "read" },
+  { &consts.str_readc,       "read:" },
   { &consts.str_splitc,      "split:" },
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },

@@ -1,4 +1,6 @@
 #include <stdlib.h>
+#include <sys/types.h>
+#include <signal.h>
 #include <assert.h>
 
 #include "ool.h"
@@ -114,7 +116,7 @@ process_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 static void
 process_free(inst_t inst, inst_t cl)
 {
-  kill(PROCESSVAL(inst)->pid, 15);
+  kill(INTVAL(PROCESSVAL(inst)->pid), 15);
 
   inst_free_parent(inst, cl);
 }
