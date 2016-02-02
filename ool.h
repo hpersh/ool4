@@ -148,6 +148,17 @@ struct inst_dptr_cnt {
 void method_call_new(inst_t *dst, inst_t sel, inst_t args);
 void block_new(inst_t *dst, inst_t args, inst_t body);
 
+struct inst_barray {
+  struct inst base[1];
+  struct {
+    unsigned      size;
+    unsigned char *data;
+  } val[1];
+};
+#define BARRAYVAL(x)  (((struct inst_barray *)(x))->val)
+void barray_new(inst_t *dat, unsigned size);
+void barray_copy(inst_t *dst, inst_t src, unsigned ofs, unsigned len);
+
 struct inst_array {
   struct inst base[1];
   struct {
@@ -157,6 +168,7 @@ struct inst_array {
 };
 #define ARRAYVAL(x)  (((struct inst_array *)(x))->val)
 void array_new(inst_t *dst, unsigned size);
+void array_copy(inst_t *dst, inst_t *src, unsigned size);
 
 struct inst_set {
   struct inst_array base[1];
@@ -221,6 +233,7 @@ struct {
   inst_t cl_list;
   inst_t cl_method_call;
   inst_t cl_block;
+  inst_t cl_barray;
   inst_t cl_array;
   inst_t cl_dict;
   inst_t cl_file;
@@ -237,6 +250,7 @@ struct {
   inst_t str_array;
   inst_t str_boolean;
   inst_t str_block;
+  inst_t str_byte_array;
   inst_t str_car;
   inst_t str_cdr;
   inst_t str_class_methods;

@@ -1531,15 +1531,102 @@ dict_find(inst_t dict, inst_t key, inst_t **bucket)
 }
 
 void
+barray_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
+{
+  assert(argc >= 1);
+
+  unsigned size = va_arg(ap, unsigned);
+  --argc;
+
+  BARRAYVAL(inst)->size = size;
+  BARRAYVAL(inst)->data = mem_alloc(size, true);
+
+  inst_init_parent(inst, cl, argc, ap);
+}
+
+void
+barray_free(inst_t inst, inst_t cl)
+{
+  mem_free(BARRAYVAL(inst)->data, BARRAYVAL(inst)->size);
+
+  inst_free_parent(inst, cl);
+}
+
+void
+barray_new(inst_t *dst, unsigned size)
+{
+  inst_alloc(dst, consts.cl_barray);
+  inst_init(*dst, 1, size);
+}
+
+void
+cm_barray_new(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (inst_of(MC_ARG(1)) != consts.cl_int)  error_bad_arg(MC_ARG(1));
+  intval_t size = INTVAL(MC_ARG(1));
+  if (size <= 0)  error_bad_arg(MC_ARG(1));
+
+  barray_new(MC_RESULT, size);
+}
+
+bool
+slice(intval_t *ofs, intval_t *len, intval_t size)
+{
+  if (*ofs < 0) {
+    *ofs = size + *ofs;
+  }
+  if (*len < 0) {
+    *ofs += *len;
+    *len = -*len;
+  }
+
+  return (*ofs >= 0 && (*ofs + *len) <= size);
+}
+
+unsigned char *
+barray_idx(inst_t b, inst_t idx)
+{
+  intval_t i = INTVAL(idx), len = 1;
+
+  if (!slice(&i, &len, BARRAYVAL(b)->size))  error("Range error");
+
+  return (&BARRAYVAL(b)->data[i]);
+}
+
+void
+cm_barray_at(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_barray)  error_bad_arg(MC_ARG(0));
+  if (inst_of(MC_ARG(1)) != consts.cl_int)     error_bad_arg(MC_ARG(1));
+
+  int_new(MC_RESULT, *barray_idx(MC_ARG(0), MC_ARG(1)));
+}
+
+void
+cm_barray_atput(void)
+{
+  if (MC_ARGC != 3)  error_argc();
+  if (inst_of(MC_ARG(0)) != consts.cl_barray)  error_bad_arg(MC_ARG(0));
+  if (inst_of(MC_ARG(1)) != consts.cl_int)     error_bad_arg(MC_ARG(1));
+  if (inst_of(MC_ARG(2)) != consts.cl_int)     error_bad_arg(MC_ARG(2));
+
+  *barray_idx(MC_ARG(0), MC_ARG(1)) = INTVAL(MC_ARG(2));
+
+  inst_assign(MC_RESULT, MC_ARG(2));
+}
+
+void
 array_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 1);
 
-  unsigned size = va_arg(ap, unsigned), s;
+  unsigned size = va_arg(ap, unsigned);
   --argc;
 
   ARRAYVAL(inst)->size = size;
-  ARRAYVAL(inst)->data = mem_alloc(s = size * sizeof(ARRAYVAL(inst)->data[0]), true);
+  ARRAYVAL(inst)->data = mem_alloc(size * sizeof(ARRAYVAL(inst)->data[0]), true);
 
   inst_init_parent(inst, cl, argc, ap);
 }
@@ -1571,6 +1658,21 @@ array_new(inst_t *dst, unsigned size)
 {
   inst_alloc(dst, consts.cl_array);
   inst_init(*dst, 1, size);
+}
+
+void
+array_copy(inst_t *dst, inst_t *src, unsigned size)
+{
+  FRAME_WORK_BEGIN(1) {
+    array_new(&WORK(0), size);
+    
+    inst_t *p;
+    for (p = ARRAYVAL(WORK(0))->data; size > 0; --size, ++src, ++p) {
+      inst_assign(p, *src);
+    }
+
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -1630,21 +1732,6 @@ cm_array_newc(void)
   error_bad_arg(MC_ARG(1));
 }
 
-bool
-slice(intval_t *ofs, intval_t *len, intval_t size)
-{
-  if (*ofs < 0) {
-    *ofs = size + *ofs;
-  }
-  if (*len < 0) {
-    *ofs += *len;
-    *len = -*len;
-  }
-
-  return (*ofs >= 0 && (*ofs + *len) <= size);
-}
-
-
 inst_t *
 array_idx(inst_t a, inst_t idx)
 {
@@ -1688,14 +1775,7 @@ cm_array_slice(void)
   intval_t idx = INTVAL(MC_ARG(1)), len = INTVAL(MC_ARG(2));
   if (!slice(&idx, &len, ARRAYVAL(MC_ARG(0))->size))  error("Range error");
 
-  FRAME_WORK_BEGIN(1) {
-    array_new(&WORK(0), len);
-    inst_t *p, *q;
-    for (p = ARRAYVAL(WORK(0))->data, q = &ARRAYVAL(MC_ARG(0))->data[idx]; len > 0; --len, ++p, ++q) {
-      inst_assign(p, *q);
-    }
-    inst_assign(MC_RESULT, WORK(0));
-  } FRAME_WORK_END;
+  array_copy(MC_RESULT, &ARRAYVAL(MC_ARG(0))->data[idx], len);
 }
 
 void
@@ -2420,6 +2500,7 @@ struct init_cl init_cl_tbl[] = {
   { &consts.cl_list,        &consts.str_list,        &consts.cl_dptr,   sizeof(struct inst_dptr),        inst_init_parent, inst_walk_parent, inst_free_parent },
   { &consts.cl_method_call, &consts.str_method_call, &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    method_call_init, inst_walk_parent, inst_free_parent },
   { &consts.cl_block,       &consts.str_block,       &consts.cl_dptr,   sizeof(struct inst_dptr_cnt),    block_init,       inst_walk_parent, inst_free_parent },
+  { &consts.cl_barray,      &consts.str_byte_array,  &consts.cl_object, sizeof(struct inst_barray),      barray_init,      inst_walk_parent, barray_free },
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        inst_walk_parent, file_free,        file_cl_init },
@@ -2438,11 +2519,12 @@ struct init_str init_str_tbl[] = {
   { &consts.str_array,       "#Array" },
   { &consts.str_boolean,     "#Boolean" },
   { &consts.str_block,       "#Block" },
+  { &consts.str_byte_array,  "#Byte-array" },
   { &consts.str_car,         "car" },
   { &consts.str_cdr,         "cdr" },
   { &consts.str_class_methods, "class-methods" },
   { &consts.str_class_variables, "class-variables" },
-  { &consts.str_code_method, "#Code_Method" },
+  { &consts.str_code_method, "#Code-method" },
   { &consts.str_cond,        "&cond" },
   { &consts.str_delc,        "del:" },
   { &consts.str_dictionary,  "#Dictionary" },
@@ -2557,6 +2639,11 @@ struct init_method init_method_tbl[] = {
 
   { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_evalc,    cm_block_eval },
   { &consts.cl_block, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_block_tostring },
+
+  { &consts.cl_barray, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_barray_new },
+
+  { &consts.cl_barray, CLASSVAL_OFS(inst_methods), &consts.str_atc,      cm_barray_at },
+  { &consts.cl_barray, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc, cm_barray_atput },
 
   { &consts.cl_array, CLASSVAL_OFS(cl_methods), &consts.str_new,  cm_array_new },
   { &consts.cl_array, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_array_newc },
