@@ -1,6 +1,8 @@
-#CFLAGS	= -g
-#CFLAGS	= -g -pg
-CFLAGS	= -O3 -fomit-frame-pointer -DNDEBUG
+CFLAGS_DEBUG	= -g
+CFLAGS_PROFILE	= -pg -O3 -DNDEBUG
+CFLAGS_OPT	= -O3 -fomit-frame-pointer -DNDEBUG
+
+CFLAGS	= $(CFLAGS_PROFILE)
 
 all:	ool math.so process.so socket.so
 
