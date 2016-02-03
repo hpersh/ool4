@@ -10,25 +10,25 @@ static struct {
   inst_t str_sqrt;
 } math_consts;
 
-void
+static void
 cm_float_atan2(void)
 {
   float_new(MC_RESULT, atan2l(FLOATVAL(MC_ARG(0)), FLOATVAL(MC_ARG(1))));
 }
 
-void
+static void
 cm_float_cos(void)
 {
   float_new(MC_RESULT, cosl(FLOATVAL(MC_ARG(0))));
 }
 
-void
+static void
 cm_float_sin(void)
 {
   float_new(MC_RESULT, sinl(FLOATVAL(MC_ARG(0))));
 }
 
-void
+static void
 cm_float_sqrt(void)
 {
   float_new(MC_RESULT, sqrtl(FLOATVAL(MC_ARG(0))));
@@ -48,7 +48,7 @@ static struct init_method math_init_method[] = {
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_sqrt,   cm_float_sqrt }
 };
 
-struct init_code_module math_code_module[1] = {
+static struct init_code_module math_code_module[1] = {
   { .consts           = (inst_t *) &math_consts,
     .consts_size      = sizeof(math_consts) / sizeof(inst_t),
     .init_str         = math_init_str,

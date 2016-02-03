@@ -19,9 +19,16 @@ struct inst_socket {
 static struct {
   inst_t cl_socket;
 
+  inst_t int_afinet;
+  inst_t int_sock_dgram;
+  inst_t int_sock_stream;
+
+  inst_t str_afinet;
   inst_t str_bindc;
   inst_t str_connectc;
   inst_t str_socket;
+  inst_t str_sock_dgram;
+  inst_t str_sock_stream;
 } socket_consts;
 
 static void
@@ -45,7 +52,7 @@ socket_free(inst_t inst, inst_t cl)
   inst_free_parent(inst, cl);
 }
 
-void
+static void
 cm_socket_new(void)
 {
   if (MC_ARGC != 2)  error_argc();
@@ -68,7 +75,25 @@ cm_socket_new(void)
   inst_init(*MC_RESULT, 3, d, t, fd);
 }
 
-void
+static void
+cm_socket_afinet(void)
+{
+  inst_assign(MC_RESULT, socket_consts.int_afinet);
+}
+
+static void
+cm_socket_sock_dgram(void)
+{
+  inst_assign(MC_RESULT, socket_consts.int_sock_dgram);
+}
+
+static void
+cm_socket_sock_stream(void)
+{
+  inst_assign(MC_RESULT, socket_consts.int_sock_stream);
+}
+
+static void
 sockaddr_in_parse(struct sockaddr_in *sa, inst_t arg)
 {
   if (inst_of(arg) != consts.cl_pair
@@ -95,7 +120,7 @@ sockaddr_in_parse(struct sockaddr_in *sa, inst_t arg)
   sa->sin_port = htons(port);
 }
 
-void
+static void
 cm_socket_bind(void)
 {
   if (MC_ARGC != 2)  error_argc();
@@ -121,7 +146,7 @@ cm_socket_bind(void)
   inst_assign(MC_RESULT, MC_ARG(0));
 }
 
-void
+static void
 cm_socket_connect(void)
 {
   if (MC_ARGC != 2)  error_argc();
@@ -147,7 +172,7 @@ cm_socket_connect(void)
   inst_assign(MC_RESULT, MC_ARG(0));  
 }
 
-void
+static void
 cm_socket_read(void)
 {
   if (MC_ARGC != 2)  error_argc();
@@ -163,7 +188,7 @@ cm_socket_read(void)
   mem_free(buf, n + 1);
 }
 
-void
+static void
 cm_socket_write(void)
 {
   if (MC_ARGC != 2)  error_argc();
@@ -178,13 +203,19 @@ static struct init_cl socket_init_cl[] = {
 };
 
 static struct init_str socket_init_str[] = {
-  { &socket_consts.str_bindc,    "bind:" },
-  { &socket_consts.str_connectc, "connect:" },
-  { &socket_consts.str_socket,   "Socket" }
+  { &socket_consts.str_afinet,      "AF_INET" },
+  { &socket_consts.str_bindc,       "bind:" },
+  { &socket_consts.str_connectc,    "connect:" },
+  { &socket_consts.str_socket,      "Socket" },
+  { &socket_consts.str_sock_dgram,  "SOCK_DGRAM" },
+  { &socket_consts.str_sock_stream, "SOCK_STREAM" }
 };
 
 static struct init_method socket_init_method[] = {
-  { &socket_consts.cl_socket, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_socket_new },
+  { &socket_consts.cl_socket, CLASSVAL_OFS(cl_methods), &consts.str_newc,               cm_socket_new },
+  { &socket_consts.cl_socket, CLASSVAL_OFS(cl_methods), &socket_consts.str_afinet,      cm_socket_afinet },
+  { &socket_consts.cl_socket, CLASSVAL_OFS(cl_methods), &socket_consts.str_sock_dgram,  cm_socket_sock_dgram },
+  { &socket_consts.cl_socket, CLASSVAL_OFS(cl_methods), &socket_consts.str_sock_stream, cm_socket_sock_stream },
 
   { &socket_consts.cl_socket, CLASSVAL_OFS(inst_methods), &socket_consts.str_bindc,    cm_socket_bind },
   { &socket_consts.cl_socket, CLASSVAL_OFS(inst_methods), &socket_consts.str_connectc, cm_socket_connect },
@@ -192,7 +223,7 @@ static struct init_method socket_init_method[] = {
   { &socket_consts.cl_socket, CLASSVAL_OFS(inst_methods), &consts.str_writec,          cm_socket_write }
 };
 
-struct init_code_module socket_code_module[1] = {
+static struct init_code_module socket_code_module[1] = {
   { .consts           = (inst_t *) &socket_consts,
     .consts_size      = sizeof(socket_consts) / sizeof(inst_t),
     .init_cl          = socket_init_cl,
@@ -209,17 +240,9 @@ socket_module_init(void)
 {
   code_module_add(socket_code_module);
 
-  FRAME_WORK_BEGIN(2) {
-    str_newc(&WORK(0), 1, 9, "#AF_INET");
-    int_new(&WORK(1), AF_INET);
-    dict_at_put(CLASSVAL(socket_consts.cl_socket)->cl_vars, WORK(0), WORK(1));
-    str_newc(&WORK(0), 1, 12, "#SOCK_DGRAM");
-    int_new(&WORK(1), SOCK_DGRAM);
-    dict_at_put(CLASSVAL(socket_consts.cl_socket)->cl_vars, WORK(0), WORK(1));
-    str_newc(&WORK(0), 1, 13, "#SOCK_STREAM");
-    int_new(&WORK(1), SOCK_STREAM);
-    dict_at_put(CLASSVAL(socket_consts.cl_socket)->cl_vars, WORK(0), WORK(1));
-  } FRAME_WORK_END;
+  int_new(&socket_consts.int_afinet,      AF_INET);
+  int_new(&socket_consts.int_sock_dgram,  SOCK_DGRAM);
+  int_new(&socket_consts.int_sock_stream, SOCK_STREAM);
 }
 
 void __attribute__((destructor))

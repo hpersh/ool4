@@ -70,12 +70,16 @@ struct mem_blk_info mem_blk_info[] = {
   { MAX_BLK_SIZE }
 };
 
+#ifndef NDEBUG
+
 struct {
   struct {
     unsigned long long pages_alloced, pages_freed;
     unsigned long long pages_in_use, pages_in_use_max;
   } mem[1];
 } stats[1];
+
+#endif
 
 unsigned
 round_up_to_power_of_2(unsigned n)
@@ -159,10 +163,12 @@ mem_pages_alloc(unsigned npages)
     collectf = true;
   }
 
+#ifndef NDEBUG
   stats->mem->pages_alloced += npages;
   if ((stats->mem->pages_in_use += npages) > stats->mem->pages_in_use_max) {
     stats->mem->pages_in_use_max = stats->mem->pages_in_use;
   }
+#endif
 
   return (p);
 }
@@ -172,8 +178,10 @@ mem_pages_free(void *p, unsigned npages)
 {
   munmap(p, npages << MEM_PAGE_SIZE_LOG2);
 
+#ifndef NDEBUG
   stats->mem->pages_freed += npages;
   stats->mem->pages_in_use -= npages;
+#endif
 }
 
 void *
@@ -3013,6 +3021,8 @@ code_module_del(struct init_code_module *cm)
   list_erase(cm->list_node);
 }
 
+#ifndef NDEBUG
+
 void
 stats_dump(void)
 {
@@ -3022,6 +3032,8 @@ stats_dump(void)
   printf("  In use: \t\t%llu\n", stats->mem->pages_in_use);
   printf("  In use (max): \t%llu\n", stats->mem->pages_in_use_max);
 }
+
+#endif
 
 int
 main(int argc, char **argv)
@@ -3065,7 +3077,9 @@ main(int argc, char **argv)
     } FRAME_WORK_END;
   } FRAME_MODULE_END;
 
+#ifndef NDEBUG
   stats_dump();
+#endif
 
   return (0);
 }

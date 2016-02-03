@@ -121,7 +121,7 @@ process_free(inst_t inst, inst_t cl)
   inst_free_parent(inst, cl);
 }
 
-void
+static void
 cm_process_new(void)
 {
   FRAME_WORK_BEGIN(1) {
@@ -131,25 +131,25 @@ cm_process_new(void)
   } FRAME_WORK_END;
 }
 
-void
+static void
 cm_process_pid(void)
 {
   inst_assign(MC_RESULT, PROCESSVAL(MC_ARG(0))->pid);
 }
 
-void
+static void
 cm_process_stdin(void)
 {
   inst_assign(MC_RESULT, PROCESSVAL(MC_ARG(0))->stdin);
 }
 
-void
+static void
 cm_process_stdout(void)
 {
   inst_assign(MC_RESULT, PROCESSVAL(MC_ARG(0))->stdout);
 }
 
-void
+static void
 cm_process_stderr(void)
 {
   inst_assign(MC_RESULT, PROCESSVAL(MC_ARG(0))->stderr);
@@ -176,7 +176,7 @@ static struct init_method process_init_method[] = {
   { &process_consts.cl_process, CLASSVAL_OFS(inst_methods), &process_consts.str_stderr, cm_process_stderr },
 };
 
-struct init_code_module process_code_module[1] = {
+static struct init_code_module process_code_module[1] = {
   { .consts           = (inst_t *) &process_consts,
     .consts_size      = sizeof(process_consts) / sizeof(inst_t),
     .init_cl          = process_init_cl,

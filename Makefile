@@ -1,6 +1,6 @@
-CFLAGS	= -g
+#CFLAGS	= -g
 #CFLAGS	= -g -pg
-#CFLAGS	= -O3 -fomit-frame-pointer
+CFLAGS	= -O3 -fomit-frame-pointer -DNDEBUG
 
 all:	ool math.so process.so socket.so
 
