@@ -1,9 +1,12 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <sys/mman.h>
 #include <dlfcn.h>
 #include <sys/types.h>
 #include <regex.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <assert.h>
 
 #include "ool.h"
@@ -536,11 +539,17 @@ error_end(void)
 }
 
 void
-error(char *msg)
+error(char *fmt, ...)
 {
   error_begin();
 
-  if (msg != 0)  fprintf(stderr, "%s\n", msg);
+  va_list ap;
+
+  va_start(ap, fmt);
+
+  if (fmt != 0)  vfprintf(stderr, fmt, ap);
+
+  va_end(ap);
 
   backtrace();
 
@@ -550,7 +559,7 @@ error(char *msg)
 void
 error_argc(void)
 {
-  error("Incorrect number of arguments");
+  error("Incorrect number of arguments\n");
 }
 
 void
@@ -607,7 +616,7 @@ void
 cm_cl_at(void)
 {
   inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, MC_ARG(1));
-  if (p == 0)  error("No such class variable");
+  if (p == 0)  error("No such class variable\n");
 
   inst_assign(MC_RESULT, CDR(p));
 }
@@ -721,7 +730,7 @@ inst_t *
 obj_inst_var(inst_t inst, inst_t var)
 {
   inst_t p = dict_at(CLASSVAL(inst_of(inst))->inst_vars, var);
-  if (p == 0)  error("No such instance variable");
+  if (p == 0)  error("No such instance variable\n");
 
   return ((inst_t *)((char *) inst + INTVAL(CDR(p))));
 }
@@ -913,6 +922,45 @@ float_new(inst_t *dst, floatval_t val)
 {
   inst_alloc(dst, consts.cl_float);
   inst_init(*dst, 1, val);
+}
+
+void
+cm_float_new(void)
+{
+  inst_t cl = inst_of(MC_ARG(1));
+  if (cl == consts.cl_float) {
+    inst_assign(MC_RESULT, MC_ARG(1));
+
+    return;
+  }
+
+  floatval_t val;
+
+  if (cl == consts.cl_int) {
+    val = (floatval_t) INTVAL(MC_ARG(1));
+  } else  error_bad_arg(MC_ARG(1));
+
+  float_new(MC_RESULT, val);
+}
+
+void
+cm_float_add(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_float))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_float))  error_bad_arg(MC_ARG(1));
+
+  float_new(MC_RESULT, FLOATVAL(MC_ARG(0)) + FLOATVAL(MC_ARG(1)));
+}
+
+void
+cm_float_mult(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_float))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_float))  error_bad_arg(MC_ARG(1));
+
+  float_new(MC_RESULT, FLOATVAL(MC_ARG(0)) * FLOATVAL(MC_ARG(1)));
 }
 
 void
@@ -1232,7 +1280,7 @@ cm_str_split(void)
   int rc = regexec(regex, s, ARRAY_SIZE(match), match, 0);
   regfree(regex);
   if (!(rc == 0 || rc == REG_NOMATCH)) {
-    error("Match failure");
+    error("Match failure\n");
   }
 
   FRAME_WORK_BEGIN(2) {
@@ -1269,7 +1317,7 @@ cm_str_slice(void)
   if (!is_kind_of(MC_ARG(2), consts.cl_int))  error_bad_arg(MC_ARG(2));	
   
   intval_t ofs = INTVAL(MC_ARG(1)), len = INTVAL(MC_ARG(2));
-  if (!slice(&ofs, &len, STRVAL(MC_ARG(0))->size - 1))  error("Range error");
+  if (!slice(&ofs, &len, STRVAL(MC_ARG(0))->size - 1))  error("Range error\n");
 
   str_newc(MC_RESULT, 1, len + 1, STRVAL(MC_ARG(0))->data + ofs);
 }
@@ -1553,7 +1601,7 @@ cm_method_call_write(void)
 inst_t *
 strdict_find(inst_t dict, inst_t key, inst_t **bucket)
 {
-  if (inst_of(key) != consts.cl_str)  error("Bad key");
+  if (inst_of(key) != consts.cl_str)  error("Bad key\n");
   
   inst_t *p = &ARRAYVAL(dict)->data[str_hash(key) & (ARRAYVAL(dict)->size - 1)];
   if (bucket != 0)  *bucket = p;
@@ -1636,7 +1684,7 @@ barray_idx(inst_t b, inst_t idx)
 {
   intval_t i = INTVAL(idx), len = 1;
 
-  if (!slice(&i, &len, BARRAYVAL(b)->size))  error("Range error");
+  if (!slice(&i, &len, BARRAYVAL(b)->size))  error("Range error\n");
 
   return (&BARRAYVAL(b)->data[i]);
 }
@@ -1725,7 +1773,7 @@ array_copy(inst_t *dst, inst_t *src, unsigned size)
 void
 cm_array_new(void)
 {
-  error("Method not found");
+  error("Method not found\n");
 }
 
 void
@@ -1784,7 +1832,7 @@ array_idx(inst_t a, inst_t idx)
 {
   intval_t i = INTVAL(idx), len = 1;
 
-  if (!slice(&i, &len, ARRAYVAL(a)->size))  error("Range error");
+  if (!slice(&i, &len, ARRAYVAL(a)->size))  error("Range error\n");
 
   return (&ARRAYVAL(a)->data[i]);
 }
@@ -1820,7 +1868,7 @@ cm_array_slice(void)
   if (inst_of(MC_ARG(2)) != consts.cl_int)  error_bad_arg(MC_ARG(2));
 
   intval_t idx = INTVAL(MC_ARG(1)), len = INTVAL(MC_ARG(2));
-  if (!slice(&idx, &len, ARRAYVAL(MC_ARG(0))->size))  error("Range error");
+  if (!slice(&idx, &len, ARRAYVAL(MC_ARG(0))->size))  error("Range error\n");
 
   array_copy(MC_RESULT, &ARRAYVAL(MC_ARG(0))->data[idx], len);
 }
@@ -1899,7 +1947,7 @@ dict_at_put(inst_t dict, inst_t key, inst_t val)
   }
 
   if (inst_of(key) == consts.cl_str && STRVAL(key)->size > 1 && STRVAL(key)->data[0] == '#') {
-    error("Cannot change constant");
+    error("Cannot re-bind constant\n");
   }
 
   inst_assign(&CDR(CAR(*p)), val);
@@ -2237,16 +2285,9 @@ module_new(inst_t *dst, inst_t name)
 void
 cm_module_new(void)
 {
-  inst_t p = dict_at(MODULE_CUR, MC_ARG(1));
-  if (p != 0 && inst_of(CDR(p)) == consts.cl_module) {
-    inst_assign(MC_RESULT, CDR(p));
-
-    return;
-  }
-
-  FRAME_WORK_BEGIN(3) {
+  FRAME_WORK_BEGIN(4) {
     str_newc(&WORK(2), 1, 5, "path");
-    p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
+    inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
     if (p != 0) {
       p = CDR(p);
       if (!is_list(p))  p = 0;
@@ -2257,12 +2298,12 @@ cm_module_new(void)
       p = WORK(2);
     }
 
-    FILE *fp = 0;
-    void *dl = 0;
-
     module_new(&WORK(0), MC_ARG(1));
+    bool loadf = true, loadokf = false;
 
     FRAME_MODULE_BEGIN(WORK(0), WORK(0)) {
+      bool textf = false, sof = false;
+
       for ( ; p != 0; p = CDR(p)) {
 	inst_t d = CAR(p);
 	if (inst_of(d) != consts.cl_str)  continue;
@@ -2272,10 +2313,11 @@ cm_module_new(void)
 		 STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
 		 5, ".ool"
 		 );
-	fp = fopen(STRVAL(WORK(1))->data, "r");
-	if (fp != 0) {
-	  file_load(&WORK(2), fp);
-	  fclose(fp);
+
+	struct stat sb[1];
+
+	if (stat(STRVAL(WORK(1))->data, sb) == 0) {
+	  textf = true;
 
 	  break;
 	}
@@ -2285,35 +2327,70 @@ cm_module_new(void)
 		 STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
 		 4, ".so"
 		 );
-	dl = dlopen(STRVAL(WORK(1))->data, RTLD_NOW);
-	if (dl != 0) {
-	  MODULEVAL(WORK(0))->dl = dl;
+
+	if (stat(STRVAL(WORK(1))->data, sb) == 0) {
+	  sof = true;
+
 	  break;
 	}
       }
+      if (p == 0)  error("Module not found\n");
+
+      inst_assign(&MODULEVAL(WORK(0))->filename, WORK(1));
+
+      str_newc(&WORK(2), 2, 8, "shasum ",
+	       STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
+	       );
+      FILE *fp = popen(STRVAL(WORK(2))->data, "r");
+      if (fp == 0) {
+	perror(0);
+	error("Popen failed\n");
+      }
+      char buf[41];
+      fgets(buf, sizeof(buf), fp);
+      str_newc(&MODULEVAL(WORK(0))->sha1, 1, sizeof(buf), buf);
+      
+      inst_t m = dict_at(modfp->prev->cur, MC_ARG(1));
+      if (m != 0 && inst_of(CDR(m)) == consts.cl_module) {
+	m = CDR(m);
+
+	if (strcmp(STRVAL(MODULEVAL(WORK(0))->sha1)->data, STRVAL(MODULEVAL(m)->sha1)->data) != 0) {
+	  fprintf(stderr, "WARNING: Attempt to load different module version, skipping\n");
+	}
+
+	inst_assign(&WORK(3), m);
+
+	loadf = false;
+      }
+
+      if (loadf) {
+	if (textf) {
+	  fp = fopen(STRVAL(WORK(1))->data, "r");
+	  if (fp != 0) {
+	    file_load(&WORK(2), fp);
+	    fclose(fp);
+
+	    loadokf = true;
+	  }
+	} else if (sof) {
+	  void *dl = dlopen(STRVAL(WORK(1))->data, RTLD_NOW);
+	  if (dl != 0) {
+	    MODULEVAL(WORK(0))->dl = dl;
+
+	    loadokf = true;
+	  }
+	} else  assert(0);
+
+	if (!loadokf)  error("Module load failed, file %s\n", STRVAL(MODULEVAL(WORK(0))->filename)->data);
+      }
     } FRAME_MODULE_END;
 
-    if (fp == 0 && dl == 0)  error("Module not found");
-
-    inst_assign(&MODULEVAL(WORK(0))->filename, WORK(1));
-
-    str_newc(&WORK(2), 2, 8, "shasum ",
-	                  STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
-	     );
-    fp = popen(STRVAL(WORK(2))->data, "r");
-    if (fp == 0) {
-      perror(0);
-      error("Popen failed");
+    if (loadokf) {
+      dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
+      inst_assign(MC_RESULT, WORK(0));
+    } else {
+      inst_assign(MC_RESULT, WORK(3));
     }
-    char buf[41];
-    fgets(buf, sizeof(buf), fp);
-    str_newc(&MODULEVAL(WORK(0))->sha1, 1, sizeof(buf), buf);
-
-    pclose(fp);
-      
-    dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
-
-    inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
 }
 
@@ -2340,7 +2417,7 @@ cm_module_at(void)
 {
   inst_t p = dict_at(MC_ARG(0), MC_ARG(1));
   if (p == 0) {
-    error("Symbol not bound");
+    error("Symbol not bound\n");
   }
 
   inst_assign(MC_RESULT, CDR(p));
@@ -2466,7 +2543,7 @@ env_at(inst_t var)
 {						
   inst_t *p = env_find(var);
 
-  if (p == 0)  error("Symbol not bound");
+  if (p == 0)  error("Symbol not bound\n");
 
   return (*p);
 }
@@ -2554,7 +2631,7 @@ method_run(inst_t m)
     return;
   }
 
-  error("Bad method");
+  error("Bad method\n");
 }
 
 void
@@ -2568,7 +2645,7 @@ inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv)
   if (cl != 0 && m == 0)                  m = method_find(sel, CLASSVAL_OFS(inst_methods), cl, &found_cl);
 
   FRAME_METHOD_CALL_BEGIN(dst, found_cl, sel, argc, argv) {
-    if (m == 0)  error("Method not found");
+    if (m == 0)  error("Method not found\n");
 
     inst_t mod = CLASSVAL(found_cl)->module;
     if (mod != MODULE_CTXT) {
@@ -2647,6 +2724,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_metaclass,   "#Metaclass" },
   { &consts.str_method_call, "#Method_Call" },
   { &consts.str_module,      "#Module" },
+  { &consts.str_multc,       "mult:" },
   { &consts.str_name,        "name" },
   { &consts.str_new,         "new" },
   { &consts.str_newc,        "new:" },
@@ -2706,6 +2784,10 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_gtc,      cm_int_gt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
+  { &consts.cl_float, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_float_new },
+
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_addc,     cm_float_add },
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_multc,    cm_float_mult },
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_float_equal },
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_gtc,      cm_float_gt },
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_float_tostring },

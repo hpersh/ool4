@@ -4,10 +4,17 @@
 #include "ool.h"
 
 static struct {
+  inst_t str_atan2c;
   inst_t str_cos;
   inst_t str_sin;
   inst_t str_sqrt;
 } math_consts;
+
+void
+cm_float_atan2(void)
+{
+  float_new(MC_RESULT, atan2l(FLOATVAL(MC_ARG(0)), FLOATVAL(MC_ARG(1))));
+}
 
 void
 cm_float_cos(void)
@@ -28,15 +35,17 @@ cm_float_sqrt(void)
 }
 
 static struct init_str math_init_str[] = {
-  { &math_consts.str_cos,  "cos" },
-  { &math_consts.str_sin,  "sin" },
-  { &math_consts.str_sqrt, "sqrt" }
+  { &math_consts.str_atan2c, "atan2:" },
+  { &math_consts.str_cos,    "cos" },
+  { &math_consts.str_sin,    "sin" },
+  { &math_consts.str_sqrt,   "sqrt" }
 };
 
 static struct init_method math_init_method[] = {
-  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_cos,  cm_float_cos },
-  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_sin,  cm_float_sin },
-  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_sqrt, cm_float_sqrt }
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_atan2c, cm_float_atan2 },
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_cos,    cm_float_cos },
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_sin,    cm_float_sin },
+  { &consts.cl_float, CLASSVAL_OFS(inst_methods), &math_consts.str_sqrt,   cm_float_sqrt }
 };
 
 struct init_code_module math_code_module[1] = {

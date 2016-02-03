@@ -1,10 +1,11 @@
+[#Module new: "math]
 
 [#Metaclass new: "Complex parent: #Object instance-variables: "(re im)]
 
 [[Complex class-methods] @ new: =
 	  {(cl args) [z =! [[[[#Object class-methods] @ new] cdr] eval: (cl)]]
-	             [z @ re = [args car]]
-		     [z @ im = [args cdr]]
+	             [z @ re = [#Float new: [args car]]]
+		     [z @ im = [#Float new: [args cdr]]]
 		     z
 	  }
 ]
@@ -29,4 +30,12 @@
                ) &cond
              ]
 	}
+]
+
+[[Complex instance-methods] @ mag =
+	{(z) [[[[z @ re] mult: [z @ re]] add: [[z @ im] mult: [z @ im]]] sqrt]}
+]
+
+[[Complex instance-methods] @ arg =
+	{(z) [[z @ im] atan2: [z @ re]]}
 ]

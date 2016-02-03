@@ -286,6 +286,7 @@ struct {
   inst_t str_metaclass;
   inst_t str_method_call;
   inst_t str_module;
+  inst_t str_multc;
   inst_t str_object;
   inst_t str_name;
   inst_t str_new;
@@ -575,7 +576,7 @@ frame_module_pop(void)
     frame_module_push(__fr, (_cur), (_ctxt));
 
 #define MODULE_CUR   (modfp->cur)
-#define MODULE_CTXT  (modfp->cur)
+#define MODULE_CTXT  (modfp->ctxt)
 
 #define FRAME_MODULE_END \
     frame_module_pop();	 \
@@ -697,7 +698,7 @@ frame_input_pop(void)
     frame_input_pop();	\
   }
 
-void error(char *msg);
+void error(char *fmt, ...);
 void fatal(char *msg);
 
 struct init_cl {
