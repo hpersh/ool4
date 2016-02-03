@@ -155,10 +155,12 @@ cm_socket_read(void)
   if (inst_of(MC_ARG(1)) != consts.cl_int)            error_bad_arg(MC_ARG(1));
 
   unsigned n = INTVAL(MC_ARG(1));
-  char buf[n + 1];
+  char *buf = mem_alloc(n + 1, false);
   int rc = read(SOCKETVAL(MC_ARG(0))->fd, buf, n);
   
   str_newc(MC_RESULT, 1, rc + 1, buf);
+
+  mem_free(buf, n + 1);
 }
 
 void
@@ -210,13 +212,13 @@ socket_module_init(void)
   FRAME_WORK_BEGIN(2) {
     str_newc(&WORK(0), 1, 9, "#AF_INET");
     int_new(&WORK(1), AF_INET);
-    dict_at_put(MODULE_CUR, WORK(0), WORK(1));
+    dict_at_put(CLASSVAL(socket_consts.cl_socket)->cl_vars, WORK(0), WORK(1));
     str_newc(&WORK(0), 1, 12, "#SOCK_DGRAM");
     int_new(&WORK(1), SOCK_DGRAM);
-    dict_at_put(MODULE_CUR, WORK(0), WORK(1));
+    dict_at_put(CLASSVAL(socket_consts.cl_socket)->cl_vars, WORK(0), WORK(1));
     str_newc(&WORK(0), 1, 13, "#SOCK_STREAM");
     int_new(&WORK(1), SOCK_STREAM);
-    dict_at_put(MODULE_CUR, WORK(0), WORK(1));
+    dict_at_put(CLASSVAL(socket_consts.cl_socket)->cl_vars, WORK(0), WORK(1));
   } FRAME_WORK_END;
 }
 

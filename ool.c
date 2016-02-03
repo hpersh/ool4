@@ -2188,9 +2188,16 @@ module_new(inst_t *dst, inst_t name)
 void
 cm_module_new(void)
 {
+  inst_t p = dict_at(MODULE_CUR, MC_ARG(1));
+  if (p != 0 && inst_of(CDR(p)) == consts.cl_module) {
+    inst_assign(MC_RESULT, CDR(p));
+
+    return;
+  }
+
   FRAME_WORK_BEGIN(3) {
     str_newc(&WORK(2), 1, 5, "path");
-    inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
+    p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
     if (p != 0) {
       p = CDR(p);
       if (!is_list(p))  p = 0;
