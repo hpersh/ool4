@@ -242,6 +242,7 @@ struct {
   inst_t cl_system;
   
   inst_t str_addc;
+  inst_t str_aandc;
   inst_t str_andc;
   inst_t str_atc;
   inst_t str_atc_defc;
@@ -292,6 +293,7 @@ struct {
   inst_t str_quote;
   inst_t str_read;
   inst_t str_readc;
+  inst_t str_size;
   inst_t str_string;
   inst_t str_splitc;
   inst_t str_system;

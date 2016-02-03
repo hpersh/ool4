@@ -4,6 +4,6 @@
 [s connect: ((140 211 15 34), 80)]
 [s write: "`GET /index.html HTTP/1.1\r\nHost: www.debian.org\r\n\r\n']
 [data =! "`']
-[[[[r =! [s read: 65536]] equal: "`'] not] &while:
-	[data = ["`' join: (data r)]]
+[[[[[data size] gt: 7] &and: [[data at: -8 length: 8] equal: "`</html>\n']] not] &while:
+	[data = ["`' join: (data [s read: 65536])]]
 ]

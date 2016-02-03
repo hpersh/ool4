@@ -747,6 +747,20 @@ cm_obj_inst_of(void)
 }
 
 void
+cm_obj_and(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+
+  FRAME_WORK_BEGIN(1) {
+    inst_method_call(&WORK(0), consts.str_eval, 1, &MC_ARG(0));
+    if (inst_of(WORK(0)) == consts.cl_bool && BOOLVAL(WORK(0))) {
+      inst_method_call(&WORK(0), consts.str_eval, 1, &MC_ARG(1));
+    }
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
 bool_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 1);
@@ -858,6 +872,16 @@ cm_int_lt(void)
   if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));
 
   bool_new(MC_RESULT, INTVAL(MC_ARG(0)) < INTVAL(MC_ARG(1)));
+}
+
+void
+cm_int_gt(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));
+
+  bool_new(MC_RESULT, INTVAL(MC_ARG(0)) > INTVAL(MC_ARG(1)));
 }
 
 void
@@ -1222,6 +1246,43 @@ cm_str_split(void)
   } FRAME_WORK_END;
 }
 
+bool
+slice(intval_t *ofs, intval_t *len, intval_t size)
+{
+  if (*ofs < 0) {
+    *ofs = size + *ofs;
+  }
+  if (*len < 0) {
+    *ofs += *len;
+    *len = -*len;
+  }
+
+  return (*ofs >= 0 && (*ofs + *len) <= size);
+}
+
+void
+cm_str_slice(void)
+{
+  if (MC_ARGC != 3)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));	
+  if (!is_kind_of(MC_ARG(2), consts.cl_int))  error_bad_arg(MC_ARG(2));	
+  
+  intval_t ofs = INTVAL(MC_ARG(1)), len = INTVAL(MC_ARG(2));
+  if (!slice(&ofs, &len, STRVAL(MC_ARG(0))->size - 1))  error("Range error");
+
+  str_newc(MC_RESULT, 1, len + 1, STRVAL(MC_ARG(0))->data + ofs);
+}
+
+void
+cm_str_size(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  
+  int_new(MC_RESULT, STRVAL(MC_ARG(0))->size - 1);
+}
+
 void
 dptr_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
@@ -1568,20 +1629,6 @@ cm_barray_new(void)
   if (size <= 0)  error_bad_arg(MC_ARG(1));
 
   barray_new(MC_RESULT, size);
-}
-
-bool
-slice(intval_t *ofs, intval_t *len, intval_t size)
-{
-  if (*ofs < 0) {
-    *ofs = size + *ofs;
-  }
-  if (*len < 0) {
-    *ofs += *len;
-    *len = -*len;
-  }
-
-  return (*ofs >= 0 && (*ofs + *len) <= size);
 }
 
 unsigned char *
@@ -2522,6 +2569,7 @@ struct init_cl init_cl_tbl[] = {
 
 struct init_str init_str_tbl[] = {
   { &consts.str_addc,        "add:" },
+  { &consts.str_aandc,       "&and:" },
   { &consts.str_andc,        "and:" },
   { &consts.str_atc,         "at:" },
   { &consts.str_atc_defc,    "at:def:" },
@@ -2572,6 +2620,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_quote,       "&quote" },
   { &consts.str_read,        "read" },
   { &consts.str_readc,       "read:" },
+  { &consts.str_size,        "size" },
   { &consts.str_splitc,      "split:" },
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
@@ -2605,6 +2654,7 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc,         cm_obj_at },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc,    cm_obj_atput },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_instance_of, cm_obj_inst_of },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_aandc,       cm_obj_and },
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc,     cm_bool_and },
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_not,      cm_bool_not },
@@ -2614,20 +2664,23 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_addc,     cm_int_add },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_int_equal },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_ltc,      cm_int_lt },
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_gtc,      cm_int_gt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
 
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_float_equal },
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_gtc,      cm_float_gt },
   { &consts.cl_float, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_float_tostring },
 
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,     cm_str_eval },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_hash,     cm_str_hash },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_equalc,   cm_str_equal },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_str_tostring },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_str__write },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_str_write },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_joinc,    cm_str_join },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_splitc,   cm_str_split },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_eval,        cm_str_eval },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_hash,        cm_str_hash },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_equalc,      cm_str_equal },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_tostring,    cm_str_tostring },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,      cm_str__write },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,       cm_str_write },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_joinc,       cm_str_join },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_splitc,      cm_str_split },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_atc_lengthc, cm_str_slice },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_size,        cm_str_size },
 
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_car, cm_dptr_car },
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_cdr, cm_dptr_cdr },

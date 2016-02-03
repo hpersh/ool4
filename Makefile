@@ -25,4 +25,4 @@ test:
 .PHONY:	clean
 
 clean:
-	rm -f ool *.o *.so
+	rm -f ool *.o *.so *~
