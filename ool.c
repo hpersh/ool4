@@ -2210,6 +2210,8 @@ void
 module_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
   (*func)(MODULEVAL(inst)->name);
+  (*func)(MODULEVAL(inst)->filename);
+  (*func)(MODULEVAL(inst)->sha1);
 
   inst_walk_parent(inst, cl, func);
 }
@@ -2272,7 +2274,7 @@ cm_module_new(void)
 		 );
 	fp = fopen(STRVAL(WORK(1))->data, "r");
 	if (fp != 0) {
-	  file_load(&WORK(1), fp);
+	  file_load(&WORK(2), fp);
 	  fclose(fp);
 
 	  break;
@@ -2292,11 +2294,45 @@ cm_module_new(void)
     } FRAME_MODULE_END;
 
     if (fp == 0 && dl == 0)  error("Module not found");
+
+    inst_assign(&MODULEVAL(WORK(0))->filename, WORK(1));
+
+    str_newc(&WORK(2), 2, 8, "shasum ",
+	                  STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
+	     );
+    fp = popen(STRVAL(WORK(2))->data, "r");
+    if (fp == 0) {
+      perror(0);
+      error("Popen failed");
+    }
+    char buf[41];
+    fgets(buf, sizeof(buf), fp);
+    str_newc(&MODULEVAL(WORK(0))->sha1, 1, sizeof(buf), buf);
+
+    pclose(fp);
       
     dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
 
     inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
+}
+
+void
+cm_module_name(void)
+{
+  inst_assign(MC_RESULT, MODULEVAL(MC_ARG(0))->name);
+}
+
+void
+cm_module_filename(void)
+{
+  inst_assign(MC_RESULT, MODULEVAL(MC_ARG(0))->filename);
+}
+
+void
+cm_module_sha1(void)
+{
+  inst_assign(MC_RESULT, MODULEVAL(MC_ARG(0))->sha1);
 }
 
 void
@@ -2594,6 +2630,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_evalc,       "eval:" },
   { &consts.str_false,       "#false" },
   { &consts.str_file,        "#File" },
+  { &consts.str_filename,    "filename" },
   { &consts.str_float,       "#Float" },
   { &consts.str_gtc,         "gt:" },
   { &consts.str_hash,        "hash" },
@@ -2610,6 +2647,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_metaclass,   "#Metaclass" },
   { &consts.str_method_call, "#Method_Call" },
   { &consts.str_module,      "#Module" },
+  { &consts.str_name,        "name" },
   { &consts.str_new,         "new" },
   { &consts.str_newc,        "new:" },
   { &consts.str_newc_modec,  "new:mode:" },
@@ -2620,6 +2658,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_quote,       "&quote" },
   { &consts.str_read,        "read" },
   { &consts.str_readc,       "read:" },
+  { &consts.str_sha1,        "sha1" },
   { &consts.str_size,        "size" },
   { &consts.str_splitc,      "split:" },
   { &consts.str_string,      "#String" },
@@ -2730,7 +2769,10 @@ struct init_method init_method_tbl[] = {
 
   { &consts.cl_module, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_module_new },  
 
-  { &consts.cl_module, CLASSVAL_OFS(inst_methods), &consts.str_atc, cm_module_at },  
+  { &consts.cl_module, CLASSVAL_OFS(inst_methods), &consts.str_name,     cm_module_name },  
+  { &consts.cl_module, CLASSVAL_OFS(inst_methods), &consts.str_filename, cm_module_filename },  
+  { &consts.cl_module, CLASSVAL_OFS(inst_methods), &consts.str_sha1,     cm_module_sha1 },  
+  { &consts.cl_module, CLASSVAL_OFS(inst_methods), &consts.str_atc,      cm_module_at },  
 
   { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 

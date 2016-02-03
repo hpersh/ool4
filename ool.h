@@ -198,6 +198,8 @@ struct inst_module {
   struct inst_set base[1];
   struct {
     inst_t name;
+    inst_t filename;
+    inst_t sha1;
     void   *dl;
   } val[1];
 };
@@ -267,6 +269,7 @@ struct {
   inst_t str_evalc;
   inst_t str_false;
   inst_t str_file;
+  inst_t str_filename;
   inst_t str_gtc;
   inst_t str_float;
   inst_t str_hash;
@@ -284,6 +287,7 @@ struct {
   inst_t str_method_call;
   inst_t str_module;
   inst_t str_object;
+  inst_t str_name;
   inst_t str_new;
   inst_t str_newc;
   inst_t str_newc_modec;
@@ -293,6 +297,7 @@ struct {
   inst_t str_quote;
   inst_t str_read;
   inst_t str_readc;
+  inst_t str_sha1;
   inst_t str_size;
   inst_t str_string;
   inst_t str_splitc;
