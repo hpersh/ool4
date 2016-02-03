@@ -2,9 +2,9 @@ CFLAGS_DEBUG	= -g
 CFLAGS_PROFILE	= -pg -O3 -DNDEBUG
 CFLAGS_OPT	= -O3 -fomit-frame-pointer -DNDEBUG
 
-CFLAGS	= $(CFLAGS_PROFILE)
+CFLAGS	= $(CFLAGS_DEBUG)
 
-all:	ool math.so process.so socket.so
+all:	ool math.so process.so socket.so net.so
 
 ool: ool.c parse.c ool.h
 	gcc $(CFLAGS) -Wl,-export-dynamic -o ool ool.c parse.c -ldl
@@ -21,8 +21,12 @@ socket.so: socket.c ool.h
 	gcc -c $(CFLAGS) -fPIC socket.c
 	gcc -shared -o socket.so socket.o
 
+net.so: net.c ool.h
+	gcc -c $(CFLAGS) -fPIC net.c
+	gcc -shared -o net.so net.o
+
 test:
-	gcc ool.c parse.c socket.c -ldl
+	gcc ool.c parse.c net.c -ldl
 
 .PHONY:	clean
 

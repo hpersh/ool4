@@ -364,7 +364,10 @@ inst_list_init(void)
 void
 inst_alloc(inst_t *dst, inst_t cl)
 {
-  inst_t inst = (inst_t) mem_alloc(CLASSVAL(cl)->inst_size, true);
+  unsigned size = CLASSVAL(cl)->inst_size;
+  if (size <= sizeof(struct inst))  error("Cannot instantiate\n");
+
+  inst_t inst = (inst_t) mem_alloc(size, true);
 
   list_insert(inst->list_node, list_end(inst_list_active()));
   

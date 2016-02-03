@@ -1,10 +1,13 @@
 [#Module new: "socket]
+[#Module new: "net]
+
+[host =! "`www.debian.org']
 
 [s =! [[socket @ Socket] new: ([[socket @ Socket] AF_INET], [[socket @ Socket] SOCK_STREAM])]]
 [s bind: ((0 0 0 0), 0)]
-[s connect: ((140 211 15 34), 80)]
+[s connect: ([[net @ Net] gethostbyname: host], 80)]
 
-[s write: "`GET /index.html HTTP/1.1\r\nHost: www.debian.org\r\n\r\n']
+[s write: ["`' join: ("`GET /index.html HTTP/1.1\r\nHost: ' host "`\r\n\r\n')]]
 
 [data =! "`']
 [[[[[data size] gt: 7] &and: [[data at: -8 length: 8] equal: "`</html>\n']] not] &while:
