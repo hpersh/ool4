@@ -2286,8 +2286,13 @@ void
 cm_module_new(void)
 {
   FRAME_WORK_BEGIN(4) {
+    inst_t p = dict_at(MODULE_CUR, MC_ARG(1));
+    if (p != 0 && inst_of(CDR(p)) == consts.cl_module) {
+      inst_assign(&WORK(3), CDR(p));
+    }
+
     str_newc(&WORK(2), 1, 5, "path");
-    inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
+    p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
     if (p != 0) {
       p = CDR(p);
       if (!is_list(p))  p = 0;
@@ -2350,15 +2355,10 @@ cm_module_new(void)
       fgets(buf, sizeof(buf), fp);
       str_newc(&MODULEVAL(WORK(0))->sha1, 1, sizeof(buf), buf);
       
-      inst_t m = dict_at(modfp->prev->cur, MC_ARG(1));
-      if (m != 0 && inst_of(CDR(m)) == consts.cl_module) {
-	m = CDR(m);
-
-	if (strcmp(STRVAL(MODULEVAL(WORK(0))->sha1)->data, STRVAL(MODULEVAL(m)->sha1)->data) != 0) {
+      if (WORK(3) != 0) {
+	if (strcmp(STRVAL(MODULEVAL(WORK(0))->sha1)->data, STRVAL(MODULEVAL(WORK(3))->sha1)->data) != 0) {
 	  fprintf(stderr, "WARNING: Attempt to load different module version, skipping\n");
 	}
-
-	inst_assign(&WORK(3), m);
 
 	loadf = false;
       }

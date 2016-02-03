@@ -1,3 +1,4 @@
+% foo
 [#Module new: "math]
 
 [#Metaclass new: "Complex parent: #Object instance-variables: "(re im)]
