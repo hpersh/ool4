@@ -204,7 +204,7 @@ struct inst_module {
   } val[1];
 };
 #define MODULEVAL(x)  (((struct inst_module *)(x))->val)
-void module_new(inst_t *dst, inst_t name);
+void module_new(inst_t *dst, inst_t name, inst_t filename, inst_t sha1);
 
 struct inst_metaclass {
   struct inst base[1];

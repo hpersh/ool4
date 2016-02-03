@@ -2246,10 +2246,12 @@ file_cl_init(inst_t cl)
 void
 module_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc >= 1);
+  assert(argc >= 3);
 
-  inst_assign(&MODULEVAL(inst)->name, va_arg(ap, inst_t));
-  argc -= 1;
+  inst_assign(&MODULEVAL(inst)->name,     va_arg(ap, inst_t));
+  inst_assign(&MODULEVAL(inst)->filename, va_arg(ap, inst_t));
+  inst_assign(&MODULEVAL(inst)->sha1,     va_arg(ap, inst_t));
+  argc -= 3;
 
   inst_init_parent(inst, cl, argc, ap);
 }
@@ -2273,11 +2275,11 @@ module_free(inst_t inst, inst_t cl)
 }
 
 void
-module_new(inst_t *dst, inst_t name)
+module_new(inst_t *dst, inst_t name, inst_t filename, inst_t sha1)
 {
   FRAME_WORK_BEGIN(1) {
     inst_alloc(&WORK(0), consts.cl_module);
-    inst_init(WORK(0), 3, name, strdict_find, 32);
+    inst_init(WORK(0), 5, name, filename, sha1, strdict_find, 32);
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
 }
@@ -2285,14 +2287,9 @@ module_new(inst_t *dst, inst_t name)
 void
 cm_module_new(void)
 {
-  FRAME_WORK_BEGIN(4) {
-    inst_t p = dict_at(MODULE_CUR, MC_ARG(1));
-    if (p != 0 && inst_of(CDR(p)) == consts.cl_module) {
-      inst_assign(&WORK(3), CDR(p));
-    }
-
+  FRAME_WORK_BEGIN(3) {
     str_newc(&WORK(2), 1, 5, "path");
-    p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
+    inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
     if (p != 0) {
       p = CDR(p);
       if (!is_list(p))  p = 0;
@@ -2303,93 +2300,92 @@ cm_module_new(void)
       p = WORK(2);
     }
 
-    module_new(&WORK(0), MC_ARG(1));
-    bool loadf = true, loadokf = false;
+    bool textf = false, sof = false;
 
-    FRAME_MODULE_BEGIN(WORK(0), WORK(0)) {
-      bool textf = false, sof = false;
-
-      for ( ; p != 0; p = CDR(p)) {
-	inst_t d = CAR(p);
-	if (inst_of(d) != consts.cl_str)  continue;
-	
-	str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
-		 2, "/",
-		 STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
-		 5, ".ool"
-		 );
-
-	struct stat sb[1];
-
-	if (stat(STRVAL(WORK(1))->data, sb) == 0) {
-	  textf = true;
-
-	  break;
-	}
-	
-	str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
-		 2, "/",
-		 STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
-		 4, ".so"
-		 );
-
-	if (stat(STRVAL(WORK(1))->data, sb) == 0) {
-	  sof = true;
-
-	  break;
-	}
-      }
-      if (p == 0)  error("Module not found\n");
-
-      inst_assign(&MODULEVAL(WORK(0))->filename, WORK(1));
-
-      str_newc(&WORK(2), 2, 8, "shasum ",
-	       STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
-	       );
-      FILE *fp = popen(STRVAL(WORK(2))->data, "r");
-      if (fp == 0) {
-	perror(0);
-	error("Popen failed\n");
-      }
-      char buf[41];
-      fgets(buf, sizeof(buf), fp);
-      str_newc(&MODULEVAL(WORK(0))->sha1, 1, sizeof(buf), buf);
+    for ( ; p != 0; p = CDR(p)) {
+      inst_t d = CAR(p);
+      if (inst_of(d) != consts.cl_str)  continue;
       
-      if (WORK(3) != 0) {
-	if (strcmp(STRVAL(MODULEVAL(WORK(0))->sha1)->data, STRVAL(MODULEVAL(WORK(3))->sha1)->data) != 0) {
-	  fprintf(stderr, "WARNING: Attempt to load different module version, skipping\n");
-	}
-
-	loadf = false;
+      str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
+	       2, "/",
+	       STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
+	       5, ".ool"
+	       );
+      
+      struct stat sb[1];
+      
+      if (stat(STRVAL(WORK(1))->data, sb) == 0) {
+	textf = true;
+	
+	break;
       }
+      
+      str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
+	       2, "/",
+	       STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
+	       4, ".so"
+	       );
+      
+      if (stat(STRVAL(WORK(1))->data, sb) == 0) {
+	sof = true;
+	
+	break;
+      }
+    }
+    if (p == 0)  error("Module not found\n");
+    
+    // WORK(1) has filename
 
-      if (loadf) {
+    str_newc(&WORK(2), 2, 8, "shasum ",
+	     STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
+	     );
+    FILE *fp = popen(STRVAL(WORK(2))->data, "r");
+    if (fp == 0) {
+      perror(0);
+      error("Popen failed\n");
+    }
+    char buf[41];
+    fgets(buf, sizeof(buf), fp);
+    str_newc(&WORK(2), 1, sizeof(buf), buf);  // WORK(2) <- SHA1
+    
+    p = dict_at(MODULE_CUR, MC_ARG(1));
+    if (p != 0 && inst_of(CDR(p)) == consts.cl_module) {
+      p = CDR(p);
+
+      if (strcmp(STRVAL(WORK(2))->data, STRVAL(MODULEVAL(p)->sha1)->data) != 0) {
+	fprintf(stderr, "WARNING: Attempt to load different module version, file %s; skipping\n", STRVAL(WORK(1))->data);
+      }
+      
+      inst_assign(MC_RESULT, p);
+    } else {
+      module_new(&WORK(0), MC_ARG(1), WORK(1), WORK(2));
+      
+      FRAME_MODULE_BEGIN(WORK(0), WORK(0)) {
 	if (textf) {
 	  fp = fopen(STRVAL(WORK(1))->data, "r");
 	  if (fp != 0) {
 	    file_load(&WORK(2), fp);
 	    fclose(fp);
-
-	    loadokf = true;
+	    
+	    goto loadok;
 	  }
 	} else if (sof) {
 	  void *dl = dlopen(STRVAL(WORK(1))->data, RTLD_NOW);
 	  if (dl != 0) {
 	    MODULEVAL(WORK(0))->dl = dl;
-
-	    loadokf = true;
+	    
+	    goto loadok;
 	  }
 	} else  assert(0);
+	
+	error("Module load failed, file %s\n", STRVAL(WORK(1))->data);
 
-	if (!loadokf)  error("Module load failed, file %s\n", STRVAL(MODULEVAL(WORK(0))->filename)->data);
-      }
-    } FRAME_MODULE_END;
+      loadok:
+	;
+      } FRAME_MODULE_END;
 
-    if (loadokf) {
       dict_at_put(MODULE_CUR, MC_ARG(1), WORK(0));
       inst_assign(MC_RESULT, WORK(0));
-    } else {
-      inst_assign(MC_RESULT, WORK(3));
     }
   } FRAME_WORK_END;
 }
@@ -2923,7 +2919,7 @@ init(void)
 
     /* Pass 5 - Create main module */
 
-    module_new(&consts.module_main, consts.str_main);
+    module_new(&consts.module_main, consts.str_main, 0, 0);
     dict_at_put(consts.module_main, consts.str_main, consts.module_main);
     dict_at_put(consts.module_main, consts.str_metaclass, consts.metaclass);
     str_newc(&WORK(0), 1, 5, "#nil");
