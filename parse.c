@@ -31,7 +31,11 @@ stream_file_eof(struct stream *str)
 int
 stream_file_getc(struct stream *str)
 {
-  return (fgetc(((struct stream_file *) str)->fp));
+  struct stream_file *_str = (struct stream_file *) str;
+
+  if (_str->last == '\n')  ++_str->line;
+
+  return (_str->last = fgetc(_str->fp));
 }
 
 void
@@ -52,6 +56,8 @@ stream_file_init(struct stream_file *str, FILE *fp)
 {
   str->base->funcs = stream_funcs_file;
   str->fp          = fp;
+  str->last        = 0;
+  str->line        = 1;
 }
 
 unsigned 
@@ -102,13 +108,13 @@ tokbuf_append_char(struct tokbuf *tb, char c)
   tokbuf_append(tb, 1, &c);
 }
 
-unsigned
+bool
 token_get(void)
 {
+  bool          result = false;
   struct stream *str = FRAME_INPUT_PC->str;
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
-  unsigned result = false, eof = false;
-  char     c;
+  char          c;
 
   tb->len = 0;
 
@@ -116,11 +122,10 @@ token_get(void)
   for (;;) {
     c = stream_getc(str);
     if (c < 0) {
-      eof    = true;
       result = true;
-
       goto done;
     }
+
     if (!isspace(c))  break;
   }
 
@@ -128,9 +133,7 @@ token_get(void)
     for (;;) {
       c = stream_getc(str);
       if (c < 0) {
-	eof    = true;
 	result = true;
-	
 	goto done;
       }
 
@@ -157,7 +160,6 @@ token_get(void)
       
       if (c == '\'' && depth == 0) {
 	result = true;
-
 	goto done;
       }
     }
@@ -173,13 +175,11 @@ token_get(void)
     }
 
     result = true;
-
     goto done;
   }
 
   if (isspecial(c)) {
     result = true;
-
     goto done;
   }
 
@@ -187,14 +187,12 @@ token_get(void)
     c = stream_getc(str);
     if (c < 0 || isspace(c)) {
       result = true;
-
       goto done;
     }
     if (isspecial(c)) {
       stream_ungetc(str, c);
 
       result = true;
-
       goto done;
     }
 
@@ -202,25 +200,33 @@ token_get(void)
   }
 
  done:
-  if (result) {
-    if (!eof)  tokbuf_append_char(tb, 0);
-  } else {
-    tokbuf_fini(tb);
-  }
+  if (result && tb->len > 0)  tokbuf_append_char(tb, 0);
   
   return (result);
 }
 
-unsigned parse_token(inst_t *dst);
+bool parse_token(inst_t *dst);
 
-unsigned
+void
+parse_error(char *fmt, ...)
+{
+  va_list ap;
+
+  va_start(ap, fmt);
+
+  vfprintf(stderr, fmt, ap);
+
+  va_end(ap);
+}
+
+bool
 parse_quote(inst_t *dst)
 {
   unsigned result;
 
   FRAME_WORK_BEGIN(1) {
     result = parse(&WORK(0));
-    if (result) {
+    if (result == PARSE_OK) {
       list_new(&WORK(0), WORK(0), 0);
       
       method_call_new(&WORK(0), consts.str_quote, WORK(0));
@@ -229,15 +235,15 @@ parse_quote(inst_t *dst)
     }
   } FRAME_WORK_END;
 
-  return (result);
+  return (result == PARSE_OK);
 }
 
-unsigned
+bool
 parse_pair_or_list(inst_t *dst)
 {
+  bool          result = false;
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
-  unsigned result = false;
-  unsigned pairf = false;
+  unsigned      pairf = false;
 
   FRAME_WORK_BEGIN(2) {
     unsigned i;
@@ -246,10 +252,16 @@ parse_pair_or_list(inst_t *dst)
     for (i = 0, p = &WORK(0); ; ++i) {
       if (!token_get())  break;
       
+      if (tb->len == 0) {
+	parse_error("Premature EOF\n");
+	break;
+      }
+
       if (tb->len == 2) {
 	switch (tb->buf[0]) {
 	case ']':
 	case '}':
+	  parse_error("Syntax error, expected )");
 	  goto done;
 	case ',':
 	  if (i != 1)  goto done;
@@ -284,10 +296,10 @@ parse_pair_or_list(inst_t *dst)
   return (result);
 }
 
-unsigned
+bool
 parse_method_call(inst_t *dst)
 {
-  unsigned result = false;
+  bool          result = false;
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
 
   FRAME_WORK_BEGIN(5) {
@@ -297,6 +309,11 @@ parse_method_call(inst_t *dst)
     for (i = 0, p = &WORK(1); ; ++i) {
       if (!token_get())  break;
       
+      if (tb->len == 0) {
+	parse_error("Premature EOF\n");
+	break;
+      }
+
       if (tb->len == 2) {
 	if (tb->buf[0] == ']') {
 	  result = true;
@@ -305,6 +322,7 @@ parse_method_call(inst_t *dst)
 	}
 	
 	if (tb->buf[0] == ')' || tb->buf[0] =='}') {
+	  parse_error("Syntax error, expected ]\n");
 	  break;
 	}
       }
@@ -312,7 +330,10 @@ parse_method_call(inst_t *dst)
       if (!parse_token(&WORK(2)))  break;
       
       if (i & 1) {
-	if (inst_of(WORK(2)) != consts.cl_str)  break;
+	if (inst_of(WORK(2)) != consts.cl_str) {
+	  parse_error("Syntax error, method selector must be string\n");
+	  break;
+	}
 	
 	if (i == 1) {
 	  inst_assign(&WORK(0), WORK(2));
@@ -325,6 +346,19 @@ parse_method_call(inst_t *dst)
 	continue;
       }
       
+      if (i > 0
+	  && !(i == 2 && (strcmp(STRVAL(WORK(0))->data, "=") == 0
+			  || strcmp(STRVAL(WORK(0))->data, "=!") == 0
+			  || strcmp(STRVAL(WORK(0))->data, "@") == 0
+			  )
+	       || i == 4 && strcmp(STRVAL(WORK(0))->data, "@=") == 0
+	       || STRVAL(WORK(0))->size >= 2 && STRVAL(WORK(0))->data[STRVAL(WORK(0))->size - 2] == ':'
+	       )
+	  ) {
+	parse_error("Syntax error, selector word must end in :\n");
+	break;
+      }
+	
       list_new(p, WORK(2), 0);
       p = &CDR(*p);
     }
@@ -365,10 +399,10 @@ parse_method_call(inst_t *dst)
   return (result);
 }
 
-unsigned
+bool
 parse_block(inst_t *dst)
 {
-  unsigned result = false;
+  bool          result = false;
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
 
   FRAME_WORK_BEGIN(3) {
@@ -378,6 +412,11 @@ parse_block(inst_t *dst)
     for (i = 0, p = &WORK(1); ; ++i) {
       if (!token_get())  break;
       
+      if (tb->len == 0) {
+	parse_error("Premature EOF\n");
+	break;
+      }
+
       if (tb->len == 2){
 	if (tb->buf[0] == '}') {
 	  result = true;
@@ -386,6 +425,7 @@ parse_block(inst_t *dst)
 	}
 	
 	if (tb->buf[0] == ')' || tb->buf[0] == ']') {
+	  parse_error("Syntax error, expected }\n");
 	  break;
 	}
       }
@@ -393,7 +433,10 @@ parse_block(inst_t *dst)
       if (!parse_token(&WORK(2)))  break;
       
       if (i == 0) {
-	if (!(WORK(2) == 0 || inst_of(WORK(2)) == consts.cl_list))  break;
+	if (!(WORK(2) == 0 || inst_of(WORK(2)) == consts.cl_list)) {
+	  parse_error("Syntax error, block args must be list\n");
+	  break;
+	}
 	
 	inst_assign(&WORK(0), WORK(2));
 	
@@ -457,7 +500,7 @@ tok_is_float(void)
   return (k >= 1);
 }
 
-unsigned
+bool
 parse_float(inst_t *dst)
 {
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
@@ -501,7 +544,7 @@ tok_is_int(void)
   return (k >= 1);
 }
 
-unsigned
+bool
 parse_int(inst_t *dst)
 {
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
@@ -522,7 +565,7 @@ parse_int(inst_t *dst)
   return (true);
 }
 
-unsigned
+bool
 parse_str(inst_t *dst)
 {
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
@@ -532,7 +575,7 @@ parse_str(inst_t *dst)
   return (true);
 }
 
-unsigned
+bool
 parse_quoted_str(inst_t *dst)
 {
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
@@ -542,7 +585,10 @@ parse_quoted_str(inst_t *dst)
 
   while (n > 0) {
     if (*p == '\\') {
-      if (n <= 1)  return (false);
+      if (n <= 1) {
+	parse_error("Syntax error, \\ with no following character\n");
+	return (false);
+      }
       switch (p[1]) {
       case 'n':
 	c = '\n';
@@ -561,6 +607,9 @@ parse_quoted_str(inst_t *dst)
       case '\\':
 	c = '\\';
 	goto replace1;
+      default:
+	parse_error("Syntax error, unrecognized \\ escape\n");
+	return (false);
       }      
     }
 
@@ -573,10 +622,10 @@ parse_quoted_str(inst_t *dst)
   return (true);
 }
 
-unsigned
+bool
 parse_token(inst_t *dst)
 {
-  unsigned result;
+  bool          result;
   struct tokbuf *tb = FRAME_INPUT_PC->tb;
   char     *p;
   unsigned n, negf;

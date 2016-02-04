@@ -2133,12 +2133,23 @@ cm_block_tostring(void)
 void
 file_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
-  assert(argc >= 1);
+  assert(argc >= 3);
 
+  inst_assign(&FILEVAL(inst)->filename, va_arg(ap, inst_t));
+  inst_assign(&FILEVAL(inst)->mode,     va_arg(ap, inst_t));
   FILEVAL(inst)->fp = va_arg(ap, FILE *);
-  --argc;
+  argc -= 3;
 
   inst_init_parent(inst, cl, argc, ap);
+}
+
+void
+file_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
+{
+  (*func)(FILEVAL(inst)->filename);
+  (*func)(FILEVAL(inst)->mode);
+
+  inst_walk_parent(inst, cl, func);
 }
 
 void
@@ -2150,10 +2161,10 @@ file_free(inst_t inst, inst_t cl)
 }
 
 void
-file_new(inst_t *dst, FILE *fp)
+file_new(inst_t *dst, inst_t filename, inst_t mode, FILE *fp)
 {
   inst_alloc(dst, consts.cl_file);
-  inst_init(*dst, 1, fp);
+  inst_init(*dst, 3, filename, mode, fp);
 }
 
 void
@@ -2169,7 +2180,7 @@ cm_file_new(void)
     error(0);
   }
 
-  file_new(MC_RESULT, fp);
+  file_new(MC_RESULT, MC_ARG(1), MC_ARG(2), fp);
 }
 
 void
@@ -2194,17 +2205,20 @@ cm_file_read(void)
   tokbuf_fini(tb);
 }
 
-void
+unsigned
 rep(inst_t *dst, bool interactf)
 {
+  unsigned result = PARSE_ERR;
+
   FRAME_WORK_BEGIN(1) {
     for (;;) {
       unsigned rc = parse(&WORK(0));
-      if (rc == PARSE_EOF)  break;
-      if (rc == PARSE_ERR) {
-	fprintf(stderr, "Syntax error\n");
-	if (interactf)  continue;  else  break;
+      if (rc == PARSE_ERR)  break;
+      if (rc == PARSE_EOF) {
+	result = PARSE_EOF;
+	break;
       }
+
       inst_method_call(dst, consts.str_eval, 1, &WORK(0));
       if (interactf) {
 	inst_method_call(&WORK(0), consts.str_tostring, 1, dst);
@@ -2212,10 +2226,12 @@ rep(inst_t *dst, bool interactf)
       }
     }
   } FRAME_WORK_END;
+
+  return (result);
 }
 
 void
-file_load(inst_t *dst, FILE *fp)
+file_load(inst_t *dst, char *filename, FILE *fp)
 {
   struct stream_file str[1];
 
@@ -2235,22 +2251,29 @@ cm_file_load(void)
   if (MC_ARGC != 1)  error_argc();
   if (inst_of(MC_ARG(0)) != consts.cl_file)  error_bad_arg(MC_ARG(0));
 
-  file_load(MC_RESULT, FILEVAL(MC_ARG(0))->fp);
+  file_load(MC_RESULT, STRVAL(FILEVAL(MC_ARG(0))->filename)->data, FILEVAL(MC_ARG(0))->fp);
 }
 
 void
 file_cl_init(inst_t cl)
 {
-  FRAME_WORK_BEGIN(2) {
+  FRAME_WORK_BEGIN(4) {
     str_newc(&WORK(0), 1, 6, "stdin");
-    file_new(&WORK(1), stdin);
-    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
+    str_newc(&WORK(1), 1, 8, "<stdin>");
+    str_newc(&WORK(2), 1, 2, "r");
+    file_new(&WORK(3), WORK(1), WORK(2), stdin);
+    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(3));
+
     str_newc(&WORK(0), 1, 7, "stdout");
-    file_new(&WORK(1), stdout);
-    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
+    str_newc(&WORK(1), 1, 9, "<stdout>");
+    str_newc(&WORK(2), 1, 2, "w");
+    file_new(&WORK(3), WORK(1), WORK(2), stdout);
+    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(3));
+
     str_newc(&WORK(0), 1, 7, "stderr");
-    file_new(&WORK(1), stderr);
-    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
+    str_newc(&WORK(1), 1, 9, "<stderr>");
+    file_new(&WORK(3), WORK(1), WORK(2), stderr);
+    dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(3));
   } FRAME_WORK_END;
 }
 
@@ -2375,7 +2398,7 @@ cm_module_new(void)
 	if (textf) {
 	  fp = fopen(STRVAL(WORK(1))->data, "r");
 	  if (fp != 0) {
-	    file_load(&WORK(2), fp);
+	    file_load(&WORK(2), STRVAL(WORK(1))->data, fp);
 	    fclose(fp);
 	    
 	    goto loadok;
@@ -2445,7 +2468,7 @@ user_class_walk(inst_t inst, inst_t cl, void (*func)(inst_t))
 {
   unsigned ofs;
   inst_t   *p;
-  for (ofs = CLASSVAL(CLASSVAL(inst)->parent)->inst_size, p = (inst_t *)((char *) inst + ofs); ofs < CLASSVAL(inst)->inst_size; ofs += sizeof(inst_t), ++p) {
+  for (ofs = CLASSVAL(CLASSVAL(cl)->parent)->inst_size, p = (inst_t *)((char *) inst + ofs); ofs < CLASSVAL(cl)->inst_size; ofs += sizeof(inst_t), ++p) {
     (*func)(*p);
   }
 
@@ -2681,7 +2704,7 @@ struct init_cl init_cl_tbl[] = {
   { &consts.cl_barray,      &consts.str_byte_array,  &consts.cl_object, sizeof(struct inst_barray),      barray_init,      inst_walk_parent, barray_free },
   { &consts.cl_array,       &consts.str_array,       &consts.cl_object, sizeof(struct inst_array),       array_init,       array_walk,       array_free },
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
-  { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        inst_walk_parent, file_free,        file_cl_init },
+  { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        file_walk,        file_free,        file_cl_init },
   { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      module_free,      module_cl_init },
   { &consts.cl_env,         &consts.str_environment, &consts.cl_object, sizeof(struct inst) },
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
@@ -3074,7 +3097,9 @@ main(int argc, char **argv)
     FRAME_WORK_BEGIN(1) {
       FRAME_INPUT_BEGIN(str->base) {
 	FRAME_ERROR_BEGIN {
-	  rep(&WORK(0), interactf);
+	  for (;;) {
+	    if (rep(&WORK(0), interactf) == PARSE_EOF)  break;
+	  }
 	} FRAME_ERROR_END;
       } FRAME_INPUT_END;
     } FRAME_WORK_END;

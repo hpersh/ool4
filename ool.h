@@ -188,11 +188,13 @@ void   dict_keys(inst_t *dst, inst_t dict);
 struct inst_file {
   struct inst base[1];
   struct {
+    inst_t filename;
+    inst_t mode;
     FILE *fp;
   } val[1];
 };
 #define FILEVAL(x) (((struct inst_file *)(x))->val)
-void file_new(inst_t *dst, FILE *fp);
+void file_new(inst_t *dst, inst_t filename, inst_t mode, FILE *fp);
 
 struct inst_module {
   struct inst_set base[1];
@@ -357,7 +359,9 @@ struct stream {
 struct stream_file {
   struct stream base[1];
   
-  FILE *fp;
+  FILE     *fp;
+  char     last;
+  unsigned line;
 };
 
 struct stream_buf {
@@ -416,7 +420,7 @@ parse_ctxt_fini(struct parse_ctxt *pc)
 }
 
 enum {
-  PARSE_EOF, PARSE_OK, PARSE_ERR
+  PARSE_OK, PARSE_EOF, PARSE_ERR
 };
 
 unsigned parse(inst_t *dst);
