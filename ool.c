@@ -2239,7 +2239,9 @@ file_load(inst_t *dst, char *filename, FILE *fp)
 
   FRAME_WORK_BEGIN(1) {
     FRAME_INPUT_BEGIN(str->base) {
-      rep(&WORK(0), false);
+      if (rep(&WORK(0), false) == PARSE_ERR) {
+	fprintf(stderr, "At file %s, line %u\n", filename, str->line);
+      }
     } FRAME_INPUT_END;
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;

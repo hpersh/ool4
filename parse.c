@@ -217,6 +217,14 @@ parse_error(char *fmt, ...)
   vfprintf(stderr, fmt, ap);
 
   va_end(ap);
+
+  struct stream *str = FRAME_INPUT_PC->str;
+
+  for (;;) {
+    char c;
+
+    if ((c = stream_getc(str)) < 0 || c == '\n')  break;
+  }
 }
 
 bool
