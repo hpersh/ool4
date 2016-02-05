@@ -77,6 +77,9 @@ typedef struct inst *inst_t;
 struct inst {
   struct list list_node[1];
   unsigned    ref_cnt;
+#ifndef NDEBUG
+  unsigned    old_ref_cnt;
+#endif
   inst_t      inst_of;
 };
 

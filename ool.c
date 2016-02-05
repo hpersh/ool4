@@ -415,6 +415,9 @@ collect(void)
   {
     struct list *li = inst_list_collect(), *p;
     for (p = list_first(li); p != list_end(li); p = list_next(p)) {
+#ifndef NDEBUG
+      FIELD_PTR_TO_STRUCT_PTR(p, struct inst, list_node)->old_ref_cnt = FIELD_PTR_TO_STRUCT_PTR(p, struct inst, list_node)->ref_cnt;
+#endif
       FIELD_PTR_TO_STRUCT_PTR(p, struct inst, list_node)->ref_cnt = 0;
     }
   }
@@ -438,7 +441,7 @@ collect(void)
 
   {
     struct list *p;
-    for (p = code_module_list; p != list_end(code_module_list); p = list_next(p)) {
+    for (p = list_first(code_module_list); p != list_end(code_module_list); p = list_next(p)) {
       struct init_code_module *cm = FIELD_PTR_TO_STRUCT_PTR(p, struct init_code_module, list_node);
       inst_t   *q;
       unsigned n;
@@ -449,7 +452,20 @@ collect(void)
   }
 
   {
-    struct list *li = inst_list_collect();
+    struct list *li;
+
+#ifndef NDEBUG
+    assert(list_empty(inst_list_collect()));
+
+    li = inst_list_active();
+    struct list *p;
+    for (p = list_first(li); p != list_end(li); p = list_next(p)) {
+      inst_t inst = FIELD_PTR_TO_STRUCT_PTR(p, struct inst, list_node);
+      assert(inst->ref_cnt == inst->old_ref_cnt);
+    }
+#endif
+
+    li = inst_list_collect();
     while (!list_empty(li)) {
       struct list *p = list_first(li);
       list_erase(p);

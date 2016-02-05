@@ -2,7 +2,7 @@ CFLAGS_DEBUG	= -g
 CFLAGS_PROFILE	= -pg -O3 -DNDEBUG
 CFLAGS_OPT	= -O3 -fomit-frame-pointer -DNDEBUG
 
-CFLAGS	= $(CFLAGS_DEBUG)
+CFLAGS	= $(CFLAGS_OPT)
 
 all:	ool math.so process.so socket.so net.so
 

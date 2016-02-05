@@ -1,23 +1,23 @@
 [#Module new: "socket]
 [#Module new: "net]
 
-[#Metaclass new: "Http parent: #Object instance-variables: "(host ipaddr socket)]
+[#Metaclass new: "Http parent: #Object instance-variables: "(host ipaddr)]
 
 [[Http class-methods] @ new: =
 	  {(cl host) [result =! [[[[#Object class-methods] @ new] cdr] eval: (cl)]]
 	             [result @ host = host]
                      [result @ ipaddr = [[net @ Net] gethostbyname: host]]
-                     [result @ socket = [[socket @ Socket] new: ([[socket @ Socket] AF_INET], [[socket @ Socket] SOCK_STREAM])]]
-		     [[result @ socket] connect: ([result @ ipaddr], 80)]
                      result
           }
 ]
 
 [[Http instance-methods] @ get: =
-	{(self url) [[self @ socket] write: ["`' join: ("`GET ' url "` HTTP/1.1\r\nHost: ' [self @ host] "`\r\n\r\n')]]
+	{(self url) [socket =! [[socket @ Socket] new: ([[socket @ Socket] AF_INET], [[socket @ Socket] SOCK_STREAM])]]
+		    [socket connect: ([self @ ipaddr], 80)]
+		    [socket write: ["`' join: ("`GET ' url "` HTTP/1.1\r\nHost: ' [self @ host] "`\r\n\r\n')]]
                     [result =! "`']
                     [[[[[result size] gt: 7] &and: [[result at: -8 length: 8] equal: "`</html>\n']] not] &while:
-                    	[result = ["`' join: (result [[self @ socket] read: 1024])]]
+                    	[result = ["`' join: (result [socket read: 1024])]]
 	            ]
 		    result
         }
