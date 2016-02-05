@@ -309,6 +309,7 @@ struct {
   inst_t str_splitc;
   inst_t str_system;
   inst_t str_tostring;
+  inst_t str_toupper;
   inst_t str_true;
   inst_t str_whilec;
   inst_t str__write;

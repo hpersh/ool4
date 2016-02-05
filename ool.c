@@ -1390,6 +1390,25 @@ cm_str_size(void)
 }
 
 void
+cm_str_toupper(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+
+  unsigned size = STRVAL(MC_ARG(0))->size;
+  char *buf     = mem_alloc(size, false);
+
+  char     *p, *q;
+  unsigned n;
+  for (p = buf, q = STRVAL(MC_ARG(0))->data, n = size - 1; n > 0; --n, ++p, ++q) {
+    *p = toupper(*q);
+  }
+  *p = 0;
+
+  str_newc(MC_RESULT, 1, size, buf);
+}
+
+void
 dptr_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 2);
@@ -2810,6 +2829,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
   { &consts.str_tostring,    "tostring" },
+  { &consts.str_toupper,     "toupper" },
   { &consts.str_true,        "#true" },
   { &consts.str_whilec,      "&while:" },
   { &consts.str__write,      "_write" },
@@ -2870,6 +2890,7 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_splitc,      cm_str_split },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_atc_lengthc, cm_str_slice },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_size,        cm_str_size },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_toupper,     cm_str_toupper },
 
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_car, cm_dptr_car },
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_cdr, cm_dptr_cdr },
