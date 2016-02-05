@@ -401,29 +401,7 @@ tokbuf_fini(struct tokbuf *tb)
 void tokbuf_append(struct tokbuf *tb, unsigned n, char *s);
 void tokbuf_append_char(struct tokbuf *tb, char c);
 
-struct parse_ctxt {
-  struct stream *str;
-  struct tokbuf tb[1];
-};
-
-static void inline
-parse_ctxt_init(struct parse_ctxt *pc, struct stream *str)
-{
-  pc->str = str;
-  tokbuf_init(pc->tb);
-}
-
-static inline void
-parse_ctxt_fini(struct parse_ctxt *pc)
-{
-  tokbuf_fini(pc->tb);
-}
-
-enum {
-  PARSE_OK, PARSE_EOF, PARSE_ERR
-};
-
-unsigned parse(inst_t *dst);
+bool parse(inst_t *dst);
 
 enum {
   FRAME_TYPE_WORK,
@@ -439,23 +417,6 @@ struct frame {
   unsigned     type;
 };
 
-struct frame *fp;
-
-static inline void
-frame_push(struct frame *fr, unsigned type)
-{
-  fr->prev = fp;
-  fr->type = type;
-
-  fp = fr;
-}
-
-static inline void
-frame_pop(void)
-{
-  fp = fp->prev;
-}
-
 struct frame_work {
   struct frame      base[1];
   struct frame_work *prev;
@@ -463,17 +424,81 @@ struct frame_work {
   inst_t            *data;
 };
 
-struct frame_work *wfp;
+struct frame_method_call {
+  struct frame base[1];
+  struct frame_method_call *prev;
+  inst_t       *result, cl, sel, *argv;
+  unsigned     argc;
+};
+
+struct frame_module {
+  struct frame        base[1];
+  struct frame_module *prev;
+  inst_t              cur;	/* Current, for adding */
+  inst_t              ctxt;	/* Search context */
+};
+
+struct frame_jmp {
+  struct frame base[1];
+  jmp_buf      jmp_buf;
+  int          code;
+};
+
+void frame_jmp(struct frame_jmp *fr, int code);
+
+struct frame_error {
+  struct frame_jmp   base[1];
+  struct frame_error *prev;
+};
+
+struct frame_block {
+  struct frame_jmp   base[1];
+  struct frame_block *prev;
+  inst_t             dict;
+};
+
+struct frame_input {
+  struct frame_jmp   base[1];
+  struct frame_input *prev;
+  char               *filename;
+  struct stream      *str;
+  struct tokbuf      tb[1];
+};
+
+struct {
+  struct frame             *fp;
+  struct frame_work        *wfp;
+  struct frame_method_call *mcfp;
+  struct frame_module      *modfp;
+  struct frame_error       *errfp;
+  struct frame_block       *blkfp;
+  struct frame_input       *inpfp;
+} oolvm[1];
+
+static inline void
+frame_push(struct frame *fr, unsigned type)
+{
+  fr->prev = oolvm->fp;
+  fr->type = type;
+
+  oolvm->fp = fr;
+}
+
+static inline void
+frame_pop(void)
+{
+  oolvm->fp = oolvm->fp->prev;
+}
 
 static inline void
 frame_work_push(struct frame_work *fr, unsigned size, inst_t *data)
 {
   frame_push(fr->base, FRAME_TYPE_WORK);
 
-  fr->prev = wfp;
+  fr->prev = oolvm->wfp;
   memset(fr->data = data, 0, (fr->size = size) * sizeof(fr->data[0]));
 
-  wfp = fr;
+  oolvm->wfp = fr;
 }
 
 static inline void
@@ -482,9 +507,9 @@ frame_work_pop(void)
   inst_t   *p;
   unsigned n;
   
-  for (p = wfp->data, n = wfp->size; n > 0; --n, ++p)  inst_release(*p);
+  for (p = oolvm->wfp->data, n = oolvm->wfp->size; n > 0; --n, ++p)  inst_release(*p);
 
-  wfp = wfp->prev;
+  oolvm->wfp = oolvm->wfp->prev;
   frame_pop();
 }
 
@@ -500,34 +525,25 @@ frame_work_pop(void)
     frame_work_pop();    \
   }
 
-struct frame_method_call {
-  struct frame base[1];
-  struct frame_method_call *prev;
-  inst_t       *result, cl, sel, *argv;
-  unsigned     argc;
-};
-
-struct frame_method_call *mcfp;
-
 static inline void
 frame_method_call_push(struct frame_method_call *fr, inst_t *result, inst_t cl, inst_t sel, unsigned argc, inst_t *argv)
 {
   frame_push(fr->base, FRAME_TYPE_METHOD_CALL);
 
-  fr->prev   = mcfp;
+  fr->prev   = oolvm->mcfp;
   fr->result = result;
   fr->cl     = cl;
   fr->sel    = sel;
   fr->argc   = argc;
   fr->argv   = argv;
 
-  mcfp = fr;
+  oolvm->mcfp = fr;
 }
 
 static inline void
 frame_method_call_pop(void)
 {
-  mcfp = mcfp->prev;
+  oolvm->mcfp = oolvm->mcfp->prev;
   frame_pop();
 }
 
@@ -536,40 +552,31 @@ frame_method_call_pop(void)
     struct frame_method_call __fr[1];					\
     frame_method_call_push(__fr, (_rslt), (_cl), (_sel), (_argc), (_argv));
 
-#define MC_RESULT  (mcfp->result)
-#define MC_ARGC    (mcfp->argc)
-#define MC_ARG(i)  (mcfp->argv[i])
-#define MC_SEL     (mcfp->sel)
+#define MC_RESULT  (oolvm->mcfp->result)
+#define MC_ARGC    (oolvm->mcfp->argc)
+#define MC_ARG(i)  (oolvm->mcfp->argv[i])
+#define MC_SEL     (oolvm->mcfp->sel)
 
 #define FRAME_METHOD_CALL_END	\
     frame_method_call_pop();    \
   }
-
-struct frame_module {
-  struct frame        base[1];
-  struct frame_module *prev;
-  inst_t              cur;	/* Current, for adding */
-  inst_t              ctxt;	/* Search context */
-};
-
-struct frame_module *modfp;
 
 static inline void
 frame_module_push(struct frame_module *fr, inst_t cur, inst_t ctxt)
 {
   frame_push(fr->base, FRAME_TYPE_MODULE);
 
-  fr->prev = modfp;
+  fr->prev = oolvm->modfp;
   fr->cur  = cur;
   fr->ctxt = ctxt;
 
-  modfp = fr;
+  oolvm->modfp = fr;
 }
 
 static inline void
 frame_module_pop(void)
 {
-  modfp = modfp->prev;
+  oolvm->modfp = oolvm->modfp->prev;
 
   frame_pop();
 }
@@ -579,40 +586,25 @@ frame_module_pop(void)
     struct frame_module __fr[1];		\
     frame_module_push(__fr, (_cur), (_ctxt));
 
-#define MODULE_CUR   (modfp->cur)
-#define MODULE_CTXT  (modfp->ctxt)
+#define MODULE_CUR   (oolvm->modfp->cur)
+#define MODULE_CTXT  (oolvm->modfp->ctxt)
 
 #define FRAME_MODULE_END \
     frame_module_pop();	 \
   }
 
-struct frame_jmp {
-  struct frame base[1];
-  jmp_buf      jmp_buf;
-  int          code;
-};
-
-void frame_jmp(struct frame_jmp *fr, int code);
-
-struct frame_error {
-  struct frame_jmp   base[1];
-  struct frame_error *prev;
-};
-
-struct frame_error *errfp;
-
 static inline void
 frame_error_push(struct frame_error *fr)
 {
   frame_push(fr->base->base, FRAME_TYPE_ERROR);
-  fr->prev = errfp;
-  errfp = fr;
+  fr->prev = oolvm->errfp;
+  oolvm->errfp = fr;
 }
 
 static inline void
 frame_error_pop(void)
 {
-  errfp = errfp->prev;
+  oolvm->errfp = oolvm->errfp->prev;
   frame_pop();
 }
 
@@ -628,27 +620,19 @@ frame_error_pop(void)
     frame_error_pop();	  \
   }
 
-struct frame_block {
-  struct frame_jmp   base[1];
-  struct frame_block *prev;
-  inst_t             dict;
-};
-
-struct frame_block *blkfp;
-
 static inline void
 frame_block_push(struct frame_block *fr, inst_t dict)
 {
   frame_push(fr->base->base, FRAME_TYPE_BLOCK);
-  fr->prev = blkfp;
+  fr->prev = oolvm->blkfp;
   fr->dict = dict;
-  blkfp = fr;
+  oolvm->blkfp = fr;
 }
 
 static inline void
 frame_block_pop(void)
 {
-  blkfp = blkfp->prev;
+  oolvm->blkfp = oolvm->blkfp->prev;
   frame_pop();
 }
 
@@ -662,41 +646,32 @@ frame_block_pop(void)
     frame_block_pop();	\
   }
 
-struct frame_input {
-  struct frame_jmp   base[1];
-  struct frame_input *prev;
-  struct parse_ctxt  pc[1];
-};
-
-struct frame_input *inpfp;
-
 static inline void
-frame_input_push(struct frame_input *fr, struct stream *str)
+frame_input_push(struct frame_input *fr, char *filename, struct stream *str)
 {
   frame_push(fr->base->base, FRAME_TYPE_INPUT);
 
-  parse_ctxt_init(fr->pc, str);
+  fr->filename = filename;
+  fr->str      = str;
+  tokbuf_init(fr->tb);
 
-  fr->prev = inpfp;
-  inpfp = fr;
+  fr->prev = oolvm->inpfp;
+  oolvm->inpfp = fr;
 }
 
 static inline void
 frame_input_pop(void)
 {
-  parse_ctxt_fini(inpfp->pc);
+  tokbuf_fini(oolvm->inpfp->tb);
 
-  inpfp = inpfp->prev;
+  oolvm->inpfp = oolvm->inpfp->prev;
   frame_pop();
 }
 
-#define FRAME_INPUT_BEGIN(_str)				\
+#define FRAME_INPUT_BEGIN(_file, _str)			\
   {							\
     struct frame_input __frame_input[1];		\
-    frame_input_push(__frame_input, (_str));		\
-    parse_ctxt_init(__frame_input->pc, (_str));
-
-#define FRAME_INPUT_PC   (inpfp->pc)
+    frame_input_push(__frame_input, (_file), (_str));
 
 #define FRAME_INPUT_END \
     frame_input_pop();	\

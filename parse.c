@@ -41,7 +41,11 @@ stream_file_getc(struct stream *str)
 void
 stream_file_ungetc(struct stream *str, char c)
 {
-  ungetc(c, ((struct stream_file *) str)->fp);
+  struct stream_file *_str = (struct stream_file *) str;
+
+  if (c == '\n')  --_str->line;
+
+  ungetc(c, _str->fp);
 }
 
 struct stream_funcs stream_funcs_file[] = {
@@ -111,9 +115,8 @@ tokbuf_append_char(struct tokbuf *tb, char c)
 bool
 token_get(void)
 {
-  bool          result = false;
-  struct stream *str = FRAME_INPUT_PC->str;
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct stream *str = oolvm->inpfp->str;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   char          c;
 
   tb->len = 0;
@@ -122,7 +125,6 @@ token_get(void)
   for (;;) {
     c = stream_getc(str);
     if (c < 0) {
-      result = true;
       goto done;
     }
 
@@ -133,7 +135,6 @@ token_get(void)
     for (;;) {
       c = stream_getc(str);
       if (c < 0) {
-	result = true;
 	goto done;
       }
 
@@ -159,7 +160,6 @@ token_get(void)
       tokbuf_append_char(tb, c);
       
       if (c == '\'' && depth == 0) {
-	result = true;
 	goto done;
       }
     }
@@ -174,25 +174,20 @@ token_get(void)
       stream_ungetc(str, c);
     }
 
-    result = true;
     goto done;
   }
 
   if (isspecial(c)) {
-    result = true;
     goto done;
   }
 
   for (;;) {
     c = stream_getc(str);
     if (c < 0 || isspace(c)) {
-      result = true;
       goto done;
     }
     if (isspecial(c)) {
       stream_ungetc(str, c);
-
-      result = true;
       goto done;
     }
 
@@ -200,16 +195,20 @@ token_get(void)
   }
 
  done:
-  if (result && tb->len > 0)  tokbuf_append_char(tb, 0);
+  if (tb->len == 0)  return (false);
   
-  return (result);
+  tokbuf_append_char(tb, 0);
+  
+  return (true);
 }
 
-bool parse_token(inst_t *dst);
+void parse_token(inst_t *dst);
 
 void
 parse_error(char *fmt, ...)
 {
+  fprintf(stderr, "Syntax error: ");
+
   va_list ap;
 
   va_start(ap, fmt);
@@ -218,39 +217,37 @@ parse_error(char *fmt, ...)
 
   va_end(ap);
 
-  struct stream *str = FRAME_INPUT_PC->str;
+  struct stream *str = oolvm->inpfp->str;
 
   for (;;) {
     char c;
 
     if ((c = stream_getc(str)) < 0 || c == '\n')  break;
   }
+
+  error(0);
 }
 
-bool
+void
 parse_quote(inst_t *dst)
 {
   unsigned result;
 
   FRAME_WORK_BEGIN(1) {
-    result = parse(&WORK(0));
-    if (result == PARSE_OK) {
-      list_new(&WORK(0), WORK(0), 0);
-      
-      method_call_new(&WORK(0), consts.str_quote, WORK(0));
-      
-      inst_assign(dst, WORK(0));
+    if (!parse(&WORK(0))) {
+      parse_error("Premature EOF\n");
     }
-  } FRAME_WORK_END;
 
-  return (result == PARSE_OK);
+    list_new(&WORK(0), WORK(0), 0);
+    method_call_new(&WORK(0), consts.str_quote, WORK(0));
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
 }
 
-bool
+void
 parse_pair_or_list(inst_t *dst)
 {
-  bool          result = false;
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   unsigned      pairf = false;
 
   FRAME_WORK_BEGIN(2) {
@@ -258,89 +255,75 @@ parse_pair_or_list(inst_t *dst)
     inst_t   *p;
   
     for (i = 0, p = &WORK(0); ; ++i) {
-      if (!token_get())  break;
-      
-      if (tb->len == 0) {
+      if (!token_get()) {
 	parse_error("Premature EOF\n");
-	break;
       }
 
       if (tb->len == 2) {
 	switch (tb->buf[0]) {
 	case ']':
 	case '}':
-	  parse_error("Syntax error, expected )");
-	  goto done;
+	  parse_error("Expected )");
 	case ',':
-	  if (i != 1)  goto done;
+	  if (i != 1)  parse_error("Unexpected ,\n");
 	  pairf = true;
 	  continue;
 	case ')':
-	  result = true;
 	  goto done;
+	default:
+	  ;
 	}
       }
 	
-      if (pairf && i > 2
-	  || !parse_token(&WORK(1))
-	  ) {
-	goto done;
+      if (pairf && i > 2) {
+	parse_error("Malformed pair\n");
       }
-      
+
+      parse_token(&WORK(1));
       list_new(p, WORK(1), 0);
       p = &CDR(*p);
     }
 
   done:
-    if (result) {
-      if (pairf) {
-	pair_new(dst, CAR(WORK(0)), CAR(CDR(WORK(0))));
-      } else {
-	inst_assign(dst, WORK(0));
-      }
+    if (pairf) {
+      pair_new(dst, CAR(WORK(0)), CAR(CDR(WORK(0))));
+    } else {
+      inst_assign(dst, WORK(0));
     }
   } FRAME_WORK_END;
-
-  return (result);
 }
 
-bool
+void
 parse_method_call(inst_t *dst)
 {
-  bool          result = false;
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
 
   FRAME_WORK_BEGIN(5) {
     unsigned i;
     inst_t   *p;
 
     for (i = 0, p = &WORK(1); ; ++i) {
-      if (!token_get())  break;
-      
-      if (tb->len == 0) {
+      if (!token_get()) {
 	parse_error("Premature EOF\n");
-	break;
       }
 
       if (tb->len == 2) {
-	if (tb->buf[0] == ']') {
-	  result = true;
-	  
-	  break;
-	}
-	
-	if (tb->buf[0] == ')' || tb->buf[0] =='}') {
-	  parse_error("Syntax error, expected ]\n");
-	  break;
+	switch (tb->buf[0]) {
+	case ')':
+	case '}':
+	  parse_error("Expected ]\n");
+	case ']':
+	  goto done;
+	default:
+	  ;
 	}
       }
       
-      if (!parse_token(&WORK(2)))  break;
+      parse_token(&WORK(2));
       
       if (i & 1) {
 	if (inst_of(WORK(2)) != consts.cl_str) {
-	  parse_error("Syntax error, method selector must be string\n");
-	  break;
+	  parse_error("Selector must be string\n");
 	}
 	
 	if (i == 1) {
@@ -363,87 +346,78 @@ parse_method_call(inst_t *dst)
 	       || STRVAL(WORK(0))->size >= 2 && STRVAL(WORK(0))->data[STRVAL(WORK(0))->size - 2] == ':'
 	       )
 	  ) {
-	parse_error("Syntax error, selector word must end in :\n");
-	break;
+	parse_error("Selector word must end in :\n");
       }
 	
       list_new(p, WORK(2), 0);
       p = &CDR(*p);
     }
 
-    if (result) {
-      bool deff = false;
-
-      if (i == 3
-	  && (strcmp(STRVAL(WORK(0))->data, "=") == 0
-	      || (deff = (strcmp(STRVAL(WORK(0))->data, "=!") == 0))
-	      )
-	  ) {
-	list_new(&WORK(3), CAR(WORK(1)), 0);
-	method_call_new(&WORK(3), consts.str_quote, WORK(3));
-	list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
-	list_new(&WORK(4), WORK(3), WORK(4));
-	list_new(&WORK(4), consts.cl_env, WORK(4));
-	method_call_new(dst, deff ? consts.str_atc_defc : consts.str_atc_putc, WORK(4));
-      } else if (i == 3 && strcmp(STRVAL(WORK(0))->data, "@") == 0) {
-	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
-	method_call_new(&WORK(3), consts.str_quote, WORK(3));
-	list_new(&WORK(3), WORK(3), 0);
-	list_new(&WORK(3), CAR(WORK(1)), WORK(3));
-	method_call_new(dst, consts.str_atc, WORK(3));
-      } else if (i == 5 && strcmp(STRVAL(WORK(0))->data, "@=") == 0) {
-	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
-	method_call_new(&WORK(3), consts.str_quote, WORK(3));
-	list_new(&WORK(4), CAR(CDR(CDR(WORK(1)))), 0);
-	list_new(&WORK(4), WORK(3), WORK(4));
-	list_new(&WORK(4), CAR(WORK(1)), WORK(4));
-	method_call_new(dst, consts.str_atc_putc, WORK(4));
-      } else {
-	method_call_new(dst, WORK(0), WORK(1));
-      }
+  done:
+    ;
+    bool deff = false;
+    
+    if (i == 3
+	&& (strcmp(STRVAL(WORK(0))->data, "=") == 0
+	    || (deff = (strcmp(STRVAL(WORK(0))->data, "=!") == 0))
+	    )
+	) {
+      list_new(&WORK(3), CAR(WORK(1)), 0);
+      method_call_new(&WORK(3), consts.str_quote, WORK(3));
+      list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
+      list_new(&WORK(4), WORK(3), WORK(4));
+      list_new(&WORK(4), consts.cl_env, WORK(4));
+      method_call_new(dst, deff ? consts.str_atc_defc : consts.str_atc_putc, WORK(4));
+    } else if (i == 3 && strcmp(STRVAL(WORK(0))->data, "@") == 0) {
+      list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+      method_call_new(&WORK(3), consts.str_quote, WORK(3));
+      list_new(&WORK(3), WORK(3), 0);
+      list_new(&WORK(3), CAR(WORK(1)), WORK(3));
+      method_call_new(dst, consts.str_atc, WORK(3));
+    } else if (i == 5 && strcmp(STRVAL(WORK(0))->data, "@=") == 0) {
+      list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+      method_call_new(&WORK(3), consts.str_quote, WORK(3));
+      list_new(&WORK(4), CAR(CDR(CDR(WORK(1)))), 0);
+      list_new(&WORK(4), WORK(3), WORK(4));
+      list_new(&WORK(4), CAR(WORK(1)), WORK(4));
+      method_call_new(dst, consts.str_atc_putc, WORK(4));
+    } else {
+      method_call_new(dst, WORK(0), WORK(1));
     }
   } FRAME_WORK_END;
-
-  return (result);
 }
 
-bool
+void
 parse_block(inst_t *dst)
 {
-  bool          result = false;
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
 
   FRAME_WORK_BEGIN(3) {
     unsigned i;
     inst_t    *p;
 
     for (i = 0, p = &WORK(1); ; ++i) {
-      if (!token_get())  break;
-      
-      if (tb->len == 0) {
+      if (!token_get()) {
 	parse_error("Premature EOF\n");
-	break;
       }
 
       if (tb->len == 2){
-	if (tb->buf[0] == '}') {
-	  result = true;
-	  
-	  break;
-	}
-	
-	if (tb->buf[0] == ')' || tb->buf[0] == ']') {
-	  parse_error("Syntax error, expected }\n");
-	  break;
+	switch (tb->buf[0]) {
+	case ')':
+	case ']':
+	  parse_error("Expected }\n");
+	case '}':
+	  goto done;
+	default:
+	  ;
 	}
       }
-      
-      if (!parse_token(&WORK(2)))  break;
+
+      parse_token(&WORK(2));
       
       if (i == 0) {
-	if (!(WORK(2) == 0 || inst_of(WORK(2)) == consts.cl_list)) {
-	  parse_error("Syntax error, block args must be list\n");
-	  break;
+	if (!is_list(WORK(2))) {
+	  parse_error("Block args must be list\n");
 	}
 	
 	inst_assign(&WORK(0), WORK(2));
@@ -455,16 +429,15 @@ parse_block(inst_t *dst)
       p = &CDR(*p);
     }
     
-    if (result)  block_new(dst, WORK(0), WORK(1));
+  done:
+    block_new(dst, WORK(0), WORK(1));
   } FRAME_WORK_END;
-
-  return (result);
 }
 
 bool
 tok_is_float(void)
 {
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   char     *p = tb->buf, c;
   unsigned n  = tb->len - 1, k;
 
@@ -508,54 +481,56 @@ tok_is_float(void)
   return (k >= 1);
 }
 
-bool
+void
 parse_float(inst_t *dst)
 {
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   floatval_t    val;
 
   sscanf(tb->buf, "%Lg", &val);
   float_new(dst, val);
-
-  return (true);
 }
 
 bool
 tok_is_int(void)
 {
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   char     *p = tb->buf, c;
   unsigned n  = tb->len - 1, k;
 
-  if (n == 0)  return (false);
-
-  if (n >= 2 && p[0] == '0' && toupper(p[1]) == 'X') {
-    p += 2;  n -= 2;
-
-    for (k = 0; n > 0; --n, ++p, ++k) {
-      c = *p;
-      if (isxdigit(c))  continue;
-      return (false);
-    }
-    return (k >= 1);
-  }
-
-  if (*p == '-') {
+  if (n > 0 && *p == '-') {
     ++p;  --n;
   }
 
   for (k = 0; n > 0; --n, ++p, ++k) {
     c = *p;
-    if (isdigit(c))  continue;
-    return (false);
+    if (!isdigit(c))  return (false);
   }
   return (k >= 1);
 }
 
 bool
+tok_is_hex(void)
+{
+  struct tokbuf *tb = oolvm->inpfp->tb;
+  char     *p = tb->buf, c;
+  unsigned n  = tb->len - 1, k;
+
+  if (!(n >= 2 && p[0] == '0' && toupper(p[1]) == 'X'))  return (false);
+
+  p += 2;  n -= 2;
+  
+  for (k = 0; n > 0; --n, ++p, ++k) {
+    c = *p;
+    if (!isxdigit(c))  return (false);
+  }
+  return (k >= 1);
+}
+
+void
 parse_int(inst_t *dst)
 {
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   char          *fmt, *s;
   intval_t      val;
 
@@ -569,24 +544,20 @@ parse_int(inst_t *dst)
 
   sscanf(s, fmt, &val);
   int_new(dst, val);
-
-  return (true);
 }
 
-bool
+void
 parse_str(inst_t *dst)
 {
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   
   str_newc(dst, 1, tb->len, tb->buf);
-
-  return (true);
 }
 
-bool
+void
 parse_quoted_str(inst_t *dst)
 {
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
 
   char     *p = tb->buf + 1, c;
   unsigned n  = tb->len - 3;
@@ -594,8 +565,7 @@ parse_quoted_str(inst_t *dst)
   while (n > 0) {
     if (*p == '\\') {
       if (n <= 1) {
-	parse_error("Syntax error, \\ with no following character\n");
-	return (false);
+	parse_error("\\ with no following character\n");
       }
       switch (p[1]) {
       case 'n':
@@ -616,8 +586,7 @@ parse_quoted_str(inst_t *dst)
 	c = '\\';
 	goto replace1;
       default:
-	parse_error("Syntax error, unrecognized \\ escape\n");
-	return (false);
+	parse_error("Unrecognized \\ escape\n");
       }      
     }
 
@@ -626,31 +595,37 @@ parse_quoted_str(inst_t *dst)
   }
 
   str_newc(dst, 1, tb->len - 2, tb->buf + 1);
-  
-  return (true);
 }
 
-bool
+void
 parse_token(inst_t *dst)
 {
-  bool          result;
-  struct tokbuf *tb = FRAME_INPUT_PC->tb;
+  struct tokbuf *tb = oolvm->inpfp->tb;
   char     *p;
   unsigned n, negf;
   
   if (tb->len == 2) {
     switch (tb->buf[0]) {
     case '"':
-      return (parse_quote(dst));
+      parse_quote(dst);
+      return;
 
     case '(':
-      return (parse_pair_or_list(dst));
+      parse_pair_or_list(dst);
+      return;
 
     case '[':
-      return (parse_method_call(dst));
+      parse_method_call(dst);
+      return;
 
     case '{':
-      return (parse_block(dst));
+      parse_block(dst);
+      return;
+
+    case ')':
+    case ']':
+    case '}':
+      parse_error("Unbalanced %c\n", tb->buf[0]);
 
     default:
       ;
@@ -658,29 +633,31 @@ parse_token(inst_t *dst)
   }
 
   if (tb->len >= 2 && tb->buf[0] == '`') {
-    return (parse_quoted_str(dst));
+    parse_quoted_str(dst);
+    return;
   }
 
-  if (tok_is_int())    return (parse_int(dst));
-  if (tok_is_float())  return (parse_float(dst));
+  if (tok_is_hex() || tok_is_int()) {
+    parse_int(dst);
+    return;
+  }
 
-  return (parse_str(dst));
+  if (tok_is_float()) {
+    parse_float(dst);
+    return;
+  }
+
+  parse_str(dst);
 }
 
-unsigned
+bool
 parse(inst_t *dst)
 {
-  unsigned result;
+  if (!token_get())  return (false);
 
-  result = token_get();
-  
-  if (result) {
-    if (FRAME_INPUT_PC->tb->len == 0)  return (PARSE_EOF);
+  parse_token(dst);
 
-    result = parse_token(dst);
-  }
-
-  return (result ? PARSE_OK : PARSE_ERR);
+  return (true);
 }
 
 

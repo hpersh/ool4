@@ -7,6 +7,7 @@
 #include <regex.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <signal.h>
 #include <assert.h>
 
 #include "ool.h"
@@ -295,8 +296,8 @@ inst_release(inst_t inst)
 void
 frame_jmp(struct frame_jmp *fr, int code)
 {
-  while (fp < fr->base) {
-    switch (fp->type) {
+  while (oolvm->fp < fr->base) {
+    switch (oolvm->fp->type) {
     case FRAME_TYPE_WORK:
       frame_work_pop();
       break;
@@ -420,7 +421,7 @@ collect(void)
 
   {
     struct frame_work *p;
-    for (p = wfp; p != 0; p = p->prev) {
+    for (p = oolvm->wfp; p != 0; p = p->prev) {
       inst_t   *q;
       unsigned n;
       for (q = p->data, n = p->size; n > 0; --n, ++q)  mark(*q);
@@ -502,22 +503,52 @@ void inst_method_call(inst_t *dst, inst_t sel, unsigned argc, inst_t *argv);
 void
 backtrace(void)
 {
-  fprintf(stderr, "Backtrace:\n");
-  
   FRAME_WORK_BEGIN(1) {
-    struct frame_method_call *p;
-    for (p = mcfp; p != 0; p = p->prev) {
-      if (p->cl == 0)  continue;
-      fprintf(stderr, "%s.%s(", STRVAL(CLASSVAL(p->cl)->name)->data, STRVAL(p->sel)->data);
-      unsigned n;
-      inst_t   *q;
-      for (q  = p->argv, n = p->argc; n > 0; --n, ++q) {
-	if (n < p->argc)  fprintf(stderr, ", ");
-	inst_method_call(&WORK(0), consts.str__write, 1, q);
-	fprintf(stderr, "%s", STRVAL(WORK(0))->data);
+    struct frame *p;
+    bool         btf = false;
+
+    for (p = oolvm->fp; p != 0; p = p->prev) {
+      switch (p->type) {
+      case FRAME_TYPE_METHOD_CALL:
+	{
+	  struct frame_method_call *mcfp = (struct frame_method_call *) p;
+
+	  if (mcfp->cl == 0)  continue;
+
+	  if (!btf) {
+	    fprintf(stderr, "Backtrace:\n");
+	    btf = true;
+	  }
+
+	  fprintf(stderr, "%s.%s(", STRVAL(CLASSVAL(mcfp->cl)->name)->data, STRVAL(mcfp->sel)->data);
+	  unsigned n;
+	  inst_t   *q;
+	  for (q  = mcfp->argv, n = mcfp->argc; n > 0; --n, ++q) {
+	  if (n < mcfp->argc)  fprintf(stderr, ", ");
+	  inst_method_call(&WORK(0), consts.str__write, 1, q);
+	  fprintf(stderr, "%s", STRVAL(WORK(0))->data);
+	  }
+	  
+	  fprintf(stderr, ")\n");
+	}
+	break;
+	
+      case FRAME_TYPE_INPUT:
+	{
+	  struct frame_input *inpfp = (struct frame_input *) p;
+
+	  if (inpfp->filename != 0) {
+	    fprintf(stderr, "From file %s line %u\n",
+		    inpfp->filename,
+		    ((struct stream_file *) inpfp->str)->line
+		    );
+	  }
+	}
+	break;
+
+      default:
+	;
       }
-      
-      fprintf(stderr, ")\n");
     }
   } FRAME_WORK_END;
 }
@@ -546,7 +577,7 @@ error_end(void)
 {
   --err_lvl;
 
-  frame_jmp(errfp->base, 1);
+  frame_jmp(oolvm->errfp->base, 1);
 }
 
 void
@@ -2205,19 +2236,12 @@ cm_file_read(void)
   tokbuf_fini(tb);
 }
 
-unsigned
+void
 rep(inst_t *dst, bool interactf)
 {
-  unsigned result = PARSE_ERR;
-
   FRAME_WORK_BEGIN(1) {
     for (;;) {
-      unsigned rc = parse(&WORK(0));
-      if (rc == PARSE_ERR)  break;
-      if (rc == PARSE_EOF) {
-	result = PARSE_EOF;
-	break;
-      }
+      if (!parse(&WORK(0)))  break;
 
       inst_method_call(dst, consts.str_eval, 1, &WORK(0));
       if (interactf) {
@@ -2226,8 +2250,6 @@ rep(inst_t *dst, bool interactf)
       }
     }
   } FRAME_WORK_END;
-
-  return (result);
 }
 
 void
@@ -2238,10 +2260,8 @@ file_load(inst_t *dst, char *filename, FILE *fp)
   stream_file_init(str, fp);
 
   FRAME_WORK_BEGIN(1) {
-    FRAME_INPUT_BEGIN(str->base) {
-      if (rep(&WORK(0), false) == PARSE_ERR) {
-	fprintf(stderr, "At file %s, line %u\n", filename, str->line);
-      }
+    FRAME_INPUT_BEGIN(filename, str->base) {
+      rep(&WORK(0), false);
     } FRAME_INPUT_END;
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
@@ -2544,7 +2564,7 @@ env_find(inst_t var)
   {
     struct frame_block *p;
 
-    for (p = blkfp; p != 0; p = p->prev) {
+    for (p = oolvm->blkfp; p != 0; p = p->prev) {
       inst_t q = dict_at(p->dict, var);
 
       if (q != 0)  return (&CDR(q));
@@ -2554,7 +2574,7 @@ env_find(inst_t var)
   {
     struct frame_module *p;
     
-    for (p = modfp; p != 0; p = p->prev) {
+    for (p = oolvm->modfp; p != 0; p = p->prev) {
       inst_t q = dict_at(p->ctxt, var);
       
       if (q != 0)  return (&CDR(q));
@@ -2567,7 +2587,7 @@ env_find(inst_t var)
 inst_t
 env_top(void)
 {
-  return (blkfp ? blkfp->dict : MODULE_CTXT);
+  return (oolvm->blkfp ? oolvm->blkfp->dict : MODULE_CTXT);
 }
 
 inst_t
@@ -3063,23 +3083,34 @@ stats_dump(void)
 
 #endif
 
+void
+intr_catch(void)
+{
+  putchar('\n');
+  frame_jmp(oolvm->errfp->base, 1);
+}
+
 int
 main(int argc, char **argv)
 {
   init();
 
-  FILE *fp;
+  char *filename;
+  FILE *fpin;
   bool interactf;
 
   switch (argc) {
   case 1:
-    fp        = stdin;
+    filename  = 0;
+    fpin      = stdin;
+    signal(SIGINT, (void (*)(int)) intr_catch);
     interactf = true;
     break;
 
   case 2:
-    fp = fopen(argv[1], "r");
-    if (fp == 0) {
+    filename = argv[1];
+    fpin     = fopen(filename, "r");
+    if (fpin == 0) {
       perror("Open input file failed");
       exit(1);
     }
@@ -3093,15 +3124,13 @@ main(int argc, char **argv)
 
   struct stream_file str[1];
 
-  stream_file_init(str, fp);
+  stream_file_init(str, fpin);
 
   FRAME_MODULE_BEGIN(consts.module_main, consts.module_main) {
     FRAME_WORK_BEGIN(1) {
-      FRAME_INPUT_BEGIN(str->base) {
+      FRAME_INPUT_BEGIN(filename, str->base) {
 	FRAME_ERROR_BEGIN {
-	  for (;;) {
-	    if (rep(&WORK(0), interactf) == PARSE_EOF)  break;
-	  }
+	  if (interactf || FRAME_ERROR_CODE == 0)  rep(&WORK(0), interactf);
 	} FRAME_ERROR_END;
       } FRAME_INPUT_END;
     } FRAME_WORK_END;
