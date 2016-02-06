@@ -321,6 +321,8 @@ void inst_init_parent(inst_t inst, inst_t cl, unsigned argc, va_list ap);
 void inst_walk_parent(inst_t inst, inst_t cl, void (*func)(inst_t));
 void inst_free_parent(inst_t inst, inst_t cl);
 
+void   inst_alloc(inst_t *dst, inst_t cl);
+void   inst_init(inst_t inst, unsigned argc, ...);
 inst_t inst_retain(inst_t inst);
 void   inst_release(inst_t inst);
 
@@ -681,8 +683,10 @@ frame_input_pop(void)
     frame_input_pop();	\
   }
 
-void error(char *fmt, ...);
-void fatal(char *msg);
+void __attribute__((noreturn)) error(char *fmt, ...);
+void __attribute__((noreturn)) error_argc(void);
+void __attribute__((noreturn)) error_bad_arg(inst_t arg);
+void __attribute__((noreturn)) fatal(char *msg);
 
 struct init_cl {
   inst_t *cl, *name, *parent;
@@ -720,3 +724,4 @@ struct init_code_module {
 void code_module_add(struct init_code_module *cm);
 void code_module_del(struct init_code_module *cm);
 
+unsigned round_up_to_power_of_2(unsigned n);

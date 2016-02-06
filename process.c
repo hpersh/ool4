@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <signal.h>
@@ -42,44 +43,53 @@ process_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
     fd[i][0] = fd[i][1] = -1;
   }
   for (i = 0; i < ARRAY_SIZE(fd); ++i) {
-    if (pipe(&fd[i][0]) < 0)  goto error;
+    if (pipe(&fd[i][0]) < 0)  goto parent_pipe_error;
   }
 
   int pid;
 
-  if ((pid = fork()) < 0) {
-    goto error;
-  }
+  if ((pid = fork()) < 0)  error("Fork failed\n");
   if (pid == 0) {
     /* Child */
 
     close(0);
-    dup(fd[0][0]);
+    if (dup(fd[0][0]) < 0)  goto child_pipe_err;
     close(fd[0][0]);
     close(fd[0][1]);
     close(1);
-    dup(fd[1][1]);
+    if (dup(fd[1][1]) < 0)  goto child_pipe_err;
     close(fd[1][0]);
     close(fd[1][1]);
     close(2);
-    dup(fd[2][1]);
+    if (dup(fd[2][1]) < 0)  goto child_pipe_err;
     close(fd[2][0]);
     close(fd[2][1]);
 
-    unsigned nargs = list_len(args);
-    inst_t   p;
-    char     *argv[nargs + 1];
-    unsigned i;
-
-    for (p = args, i = 0; i < nargs; ++i, p = CDR(p)) {
-      argv[i] = STRVAL(CAR(p))->data;
+    {
+      unsigned nargs = list_len(args);
+      inst_t   p;
+      char     *argv[nargs + 1];
+      unsigned i;
+      
+      for (p = args, i = 0; i < nargs; ++i, p = CDR(p)) {
+	argv[i] = STRVAL(CAR(p))->data;
+      }
+      argv[i] = 0;
+      
+      execv(argv[0], &argv[1]);
     }
-    argv[i] = 0;
-    
-    execv(argv[0], &argv[1]);
 
+    fprintf(stderr, "Child exec failed\n");
+    exit(1);
+
+  child_pipe_err:
+    fprintf(stderr, "Child pipe setup failed\n");
     exit(1);
   }
+
+  close(fd[0][0]);
+  close(fd[1][1]);
+  close(fd[2][1]);
 
   FRAME_WORK_BEGIN(2) {
     int_new(&PROCESSVAL(inst)->pid, pid);
@@ -97,20 +107,17 @@ process_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
     file_new(&PROCESSVAL(inst)->stderr, WORK(0), WORK(1), fdopen(fd[2][0], "r"));
   } FRAME_WORK_END;
 
-  close(fd[0][0]);
-  close(fd[1][1]);
-  close(fd[2][1]);
-
   inst_init_parent(inst, cl, argc, ap);
 
   return;
     
- error:
+ parent_pipe_error:
   for (i = 0; i < ARRAY_SIZE(fd); ++i) {
     for (j = 0; j < ARRAY_SIZE(fd[0]); ++j) {
       if (fd[i][j] >= 0)  close(fd[i][j]);
     }
   }
+  error("Parent pipe setup failed\n");
 }
 
 static void

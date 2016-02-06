@@ -7,6 +7,7 @@
 #include <regex.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <ctype.h>
 #include <signal.h>
 #include <assert.h>
 
@@ -293,7 +294,7 @@ inst_release(inst_t inst)
   if (--inst->ref_cnt == 0)  inst_free(inst);
 }
 
-void
+void __attribute__((noreturn)) 
 frame_jmp(struct frame_jmp *fr, int code)
 {
   while (oolvm->fp < fr->base) {
@@ -569,7 +570,7 @@ backtrace(void)
   } FRAME_WORK_END;
 }
 
-void
+void __attribute__((noreturn))
 fatal(char *msg)
 {
   fprintf(stderr, "%s\n", msg);
@@ -588,7 +589,7 @@ error_begin(void)
   abort();
 }
 
-static inline void
+static inline void __attribute__((noreturn)) 
 error_end(void)
 {
   --err_lvl;
@@ -596,7 +597,7 @@ error_end(void)
   frame_jmp(oolvm->errfp->base, 1);
 }
 
-void
+void __attribute__((noreturn)) 
 error(char *fmt, ...)
 {
   error_begin();
@@ -614,13 +615,13 @@ error(char *fmt, ...)
   error_end();
 }
 
-void
+void __attribute__((noreturn)) 
 error_argc(void)
 {
   error("Incorrect number of arguments\n");
 }
 
-void
+void __attribute__((noreturn)) 
 error_bad_arg(inst_t arg)
 {
   error_begin();
@@ -771,11 +772,13 @@ cm_obj_tostring(void)
 
   inst_t cl_name = CLASSVAL(inst_of(MC_ARG(0)))->name;
   unsigned n = 1 + (STRVAL(cl_name)->size - 1) + 1 + 18 + 1 + 1;
-  char buf[n];
+  char *buf = mem_alloc(n, false);
 
   snprintf(buf, n, "<%s@%p>", STRVAL(cl_name)->data, MC_ARG(0));
 
   str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
+
+  mem_free(buf, n);
 }
 
 void
@@ -1044,7 +1047,7 @@ cm_float_gt(void)
 void
 cm_float_tostring(void)
 {
-  char buf[128];
+  char buf[64];
 
   snprintf(buf, sizeof(buf), "%Lg", FLOATVAL(MC_ARG(0)));
   str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
@@ -1243,7 +1246,7 @@ bool
 has_space(char *s)
 {
   char c;
-  for ( ; c = *s; ++s) {
+  for ( ; (c = *s) != 0; ++s) {
     if (isspace(c))  return (true);
   }
 
@@ -1406,6 +1409,8 @@ cm_str_toupper(void)
   *p = 0;
 
   str_newc(MC_RESULT, 1, size, buf);
+
+  mem_free(buf, size);
 }
 
 void
@@ -1532,7 +1537,7 @@ cm_list_tostring_write(void)
 
   FRAME_WORK_BEGIN(1) {
     unsigned n = list_len(MC_ARG(0));
-    unsigned nn = (n == 0) ? 2 : (2 * n + 1), k;
+    unsigned nn = (n == 0) ? 2 : (2 * n + 1);
     inst_t *p, q;
 
     array_new(&WORK(0), 1 + nn);
@@ -2178,7 +2183,7 @@ cm_block_tostring(void)
 
   FRAME_WORK_BEGIN(1) {
     unsigned n = 1 + list_len(CDR(MC_ARG(0)));
-    unsigned nn = 1 + 2 * n - 1 + 1, i, k;
+    unsigned nn = 1 + 2 * n - 1 + 1;
     inst_t *p, q;
 
     array_new(&WORK(0), 1 + nn);
@@ -2252,21 +2257,22 @@ cm_file_new(void)
 void
 cm_file_read(void)
 {
+  enum { BUFSIZE = 1024 };
   struct tokbuf tb[1];
 
   tokbuf_init(tb);
 
   FILE *fp = FILEVAL(MC_ARG(0))->fp;
-  char buf[256];
+  char *buf = mem_alloc(BUFSIZE, false);
 
-  while (!feof(fp)) {
-    buf[sizeof(buf) - 1] = 0;
-    fgets(buf, sizeof(buf), fp);
-    tokbuf_append(tb, buf[sizeof(buf) - 1] != 0 ? sizeof(buf) : strlen(buf), buf);
+  while (fgets(buf, BUFSIZE, fp) != 0) {
+    tokbuf_append(tb, strlen(buf), buf);
   }
   tokbuf_append_char(tb, 0);
 
   str_newc(MC_RESULT, 1, tb->len, tb->buf);
+
+  mem_free(buf, BUFSIZE);
 
   tokbuf_fini(tb);
 }
@@ -2376,6 +2382,25 @@ module_new(inst_t *dst, inst_t name, inst_t filename, inst_t sha1)
 }
 
 void
+file_sha1(inst_t *dst, char *filename)
+{
+  char buf[41];
+  FILE *fp = popen(filename, "r");
+  if (fp == 0)  goto err;
+  void *ret = fgets(buf, sizeof(buf), fp);
+  pclose(fp);
+  if (ret == 0)  goto err;
+
+  str_newc(dst, 1, sizeof(buf), buf);
+
+  return;
+
+ err:
+  perror(0);
+  error("Failed to get SHA1 for file\n");
+}
+
+void
 cm_module_new(void)
 {
   FRAME_WORK_BEGIN(3) {
@@ -2430,14 +2455,8 @@ cm_module_new(void)
     str_newc(&WORK(2), 2, 8, "shasum ",
 	     STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
 	     );
-    FILE *fp = popen(STRVAL(WORK(2))->data, "r");
-    if (fp == 0) {
-      perror(0);
-      error("Popen failed\n");
-    }
-    char buf[41];
-    fgets(buf, sizeof(buf), fp);
-    str_newc(&WORK(2), 1, sizeof(buf), buf);  // WORK(2) <- SHA1
+
+    file_sha1(&WORK(2), STRVAL(WORK(1))->data);  // WORK(2) <- SHA1
     
     p = dict_at(MODULE_CUR, MC_ARG(1));
     if (p != 0 && inst_of(CDR(p)) == consts.cl_module) {
@@ -2453,7 +2472,7 @@ cm_module_new(void)
       
       FRAME_MODULE_BEGIN(WORK(0), WORK(0)) {
 	if (textf) {
-	  fp = fopen(STRVAL(WORK(1))->data, "r");
+	  FILE *fp = fopen(STRVAL(WORK(1))->data, "r");
 	  if (fp != 0) {
 	    file_load(&WORK(2), STRVAL(WORK(1))->data, fp);
 	    fclose(fp);

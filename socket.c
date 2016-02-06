@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -182,6 +183,10 @@ cm_socket_read(void)
   unsigned n = INTVAL(MC_ARG(1));
   char *buf = mem_alloc(n + 1, false);
   int rc = read(SOCKETVAL(MC_ARG(0))->fd, buf, n);
+  if (rc < 0) {
+    perror(0);
+    error(0);
+  }
   
   str_newc(MC_RESULT, 1, rc + 1, buf);
 

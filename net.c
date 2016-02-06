@@ -25,7 +25,7 @@ cm_net_gethostbyname(void)
   FRAME_WORK_BEGIN(2) {
     unsigned char *p;
     unsigned n;
-    for (p = &he->h_addr[3], n = 4; n > 0; --n, --p) {
+    for (p = (unsigned char *) &he->h_addr[3], n = 4; n > 0; --n, --p) {
       int_new(&WORK(1), *p);
       list_new(&WORK(0), WORK(1), WORK(0));
     }

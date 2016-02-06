@@ -231,8 +231,6 @@ parse_error(char *fmt, ...)
 void
 parse_quote(inst_t *dst)
 {
-  unsigned result;
-
   FRAME_WORK_BEGIN(1) {
     if (!parse(&WORK(0))) {
       parse_error("Premature EOF\n");
@@ -601,8 +599,6 @@ void
 parse_token(inst_t *dst)
 {
   struct tokbuf *tb = oolvm->inpfp->tb;
-  char     *p;
-  unsigned n, negf;
   
   if (tb->len == 2) {
     switch (tb->buf[0]) {
