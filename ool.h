@@ -272,6 +272,8 @@ struct {
   inst_t str_equalc;
   inst_t str_eval;
   inst_t str_evalc;
+  inst_t str_exit;
+  inst_t str_exitc;
   inst_t str_false;
   inst_t str_file;
   inst_t str_filename;

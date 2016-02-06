@@ -2698,6 +2698,21 @@ cm_env_atdef(void)
   inst_assign(MC_RESULT, MC_ARG(2));
 }
 
+void
+cm_sys_exit(void)
+{
+  exit(0);
+}
+
+void
+cm_sys_exit1(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (inst_of(MC_ARG(1)) != consts.cl_int)  error_bad_arg(MC_ARG(1));
+
+  exit(INTVAL(MC_ARG(1)));
+}
+
 inst_t
 method_find(inst_t sel, unsigned ofs, inst_t cl, inst_t *found_cl)
 {
@@ -2813,6 +2828,8 @@ struct init_str init_str_tbl[] = {
   { &consts.str_equalc,      "equal:" },
   { &consts.str_eval,        "eval" },
   { &consts.str_evalc,       "eval:" },
+  { &consts.str_exit,        "exit" },
+  { &consts.str_exitc,       "exit:" },
   { &consts.str_false,       "#false" },
   { &consts.str_file,        "#File" },
   { &consts.str_filename,    "filename" },
@@ -2973,7 +2990,10 @@ struct init_method init_method_tbl[] = {
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
-  { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_putc, cm_env_atput }
+  { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_putc, cm_env_atput },
+
+  { &consts.cl_system, CLASSVAL_OFS(cl_methods), &consts.str_exit,  cm_sys_exit },
+  { &consts.cl_system, CLASSVAL_OFS(cl_methods), &consts.str_exitc, cm_sys_exit1 }
 };
 
 void
