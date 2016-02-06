@@ -17,7 +17,7 @@
 		    [socket write: ["`' join: ("`GET ' url "` HTTP/1.1\r\nHost: ' [self @ host] "`\r\n\r\n')]]
                     [result =! "`']
                     [[[[[result size] gt: 7] &and: [[[result at: -8 length: 8] toupper] equal: "`</HTML>\n']] not] &while:
-                    	[result = ["`' join: (result [socket read: 1024])]]
+                    	[result = ["`' join: (result [socket read: 512])]]
 	            ]
 		    result
         }

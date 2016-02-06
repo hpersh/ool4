@@ -2257,7 +2257,7 @@ cm_file_new(void)
 void
 cm_file_read(void)
 {
-  enum { BUFSIZE = 1024 };
+  enum { BUFSIZE = 512 };
   struct tokbuf tb[1];
 
   tokbuf_init(tb);
@@ -2382,22 +2382,24 @@ module_new(inst_t *dst, inst_t name, inst_t filename, inst_t sha1)
 }
 
 void
-file_sha1(inst_t *dst, char *filename)
+file_sha1(inst_t *dst, inst_t filename)
 {
-  char buf[41];
-  FILE *fp = popen(filename, "r");
-  if (fp == 0)  goto err;
-  void *ret = fgets(buf, sizeof(buf), fp);
-  pclose(fp);
-  if (ret == 0)  goto err;
+  FRAME_WORK_BEGIN(1) {
+    str_newc(&WORK(0), 2, 8, "shasum ",
+	                  STRVAL(filename)->size, STRVAL(filename)->data
+	     );
 
-  str_newc(dst, 1, sizeof(buf), buf);
-
-  return;
-
- err:
-  perror(0);
-  error("Failed to get SHA1 for file\n");
+    char buf[41];
+    FILE *fp = 0;
+    void *ret = 0;
+    fp = popen(STRVAL(WORK(0))->data, "r");
+    if (fp != 0) {
+      ret = fgets(buf, sizeof(buf), fp);
+      pclose(fp);
+    }
+    if (ret == 0)  error("Failed to get SHA1 for file\n");
+    str_newc(dst, 1, sizeof(buf), buf);
+  } FRAME_WORK_END;
 }
 
 void
@@ -2456,7 +2458,7 @@ cm_module_new(void)
 	     STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
 	     );
 
-    file_sha1(&WORK(2), STRVAL(WORK(1))->data);  // WORK(2) <- SHA1
+    file_sha1(&WORK(2), WORK(1));  // WORK(2) <- SHA1
     
     p = dict_at(MODULE_CUR, MC_ARG(1));
     if (p != 0 && inst_of(CDR(p)) == consts.cl_module) {
