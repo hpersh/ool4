@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <ctype.h>
+#include <strings.h>
 
 #include "ool.h"
 
@@ -278,9 +279,14 @@ parse_method_call(inst_t *dst)
 
   FRAME_WORK_BEGIN(5) {
     unsigned i;
-    inst_t   *p;
+    inst_t   *p, *q;
 
-    for (i = 0, p = &WORK(1); ; ++i) {
+    // WORK(0) = Arg list
+    // WORK(1) = List of sel words
+    // WORK(2) = Sel
+
+    str_newc(&WORK(2), 1, 0, "");
+    for (i = 0, p = &WORK(0), q = &WORK(1); ; ++i) {
       if (!token_get())  parse_error("Premature EOF\n");
 
       if (tb->len == 1) {
@@ -296,67 +302,59 @@ parse_method_call(inst_t *dst)
       }
       
       if (i & 1) {
-	if (i == 1) {
-	  str_newc(&WORK(0), 1, tb->len, tb->buf);
-	  continue;
-	}
+	str_newc(&WORK(3), 1, tb->len, tb->buf);
+	list_new(q, WORK(3), 0);
+	q = &CDR(*q);
 
-	if (!(i == 3 && strcmp(STRVAL(WORK(0))->data, "@") == 0 && tb->len == 1 && tb->buf[0] == '='
-	      || STRVAL(WORK(0))->size >= 2 && STRVAL(WORK(0))->data[STRVAL(WORK(0))->size - 2] == ':'
-	      )
-	    ) {
-	bad_sel:
-	  parse_error("Selector word must end in :\n");
-	}	
-
-	str_newc(&WORK(0), 2, STRVAL(WORK(0))->size - 1, STRVAL(WORK(0))->data,
+	str_newc(&WORK(2), 2, STRVAL(WORK(2))->size - 1, STRVAL(WORK(2))->data,
 		              tb->len, tb->buf
 		 );
+
 	continue;
       }
 
-      parse_token(&WORK(2));      
-      list_new(p, WORK(2), 0);
+      parse_token(&WORK(3));      
+      list_new(p, WORK(3), 0);
       p = &CDR(*p);
     }
 
   got:
     switch (i) {
     case 3:
-      if (strcmp(STRVAL(WORK(0))->data, "=!") == 0) {
-	list_new(&WORK(3), CAR(WORK(1)), 0);
+      if (strcmp(STRVAL(WORK(2))->data, "=!") == 0) {
+	list_new(&WORK(3), CAR(WORK(0)), 0);
 	method_call_new(&WORK(3), consts.str_quote, WORK(3));
-	list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
+	list_new(&WORK(4), CAR(CDR(WORK(0))), 0);
 	list_new(&WORK(4), WORK(3), WORK(4));
 	list_new(&WORK(4), consts.cl_env, WORK(4));
 	method_call_new(dst, consts.str_atc_defc, WORK(4));
 	goto done;
       }
-      if (strcmp(STRVAL(WORK(0))->data, "=") == 0) {
-	list_new(&WORK(3), CAR(WORK(1)), 0);
+      if (strcmp(STRVAL(WORK(2))->data, "=") == 0) {
+	list_new(&WORK(3), CAR(WORK(0)), 0);
 	method_call_new(&WORK(3), consts.str_quote, WORK(3));
-	list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
+	list_new(&WORK(4), CAR(CDR(WORK(0))), 0);
 	list_new(&WORK(4), WORK(3), WORK(4));
 	list_new(&WORK(4), consts.cl_env, WORK(4));
 	method_call_new(dst, consts.str_atc_putc, WORK(4));
 	goto done;
       }
-      if (strcmp(STRVAL(WORK(0))->data, "@") == 0) {
-	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+      if (strcmp(STRVAL(WORK(2))->data, "@") == 0) {
+	list_new(&WORK(3), CAR(CDR(WORK(0))), 0);
 	method_call_new(&WORK(3), consts.str_quote, WORK(3));
 	list_new(&WORK(3), WORK(3), 0);
-	list_new(&WORK(3), CAR(WORK(1)), WORK(3));
+	list_new(&WORK(3), CAR(WORK(0)), WORK(3));
 	method_call_new(dst, consts.str_atc, WORK(3));
 	goto done;
       }
       break;
     case 5:
-      if (strcmp(STRVAL(WORK(0))->data, "@=") == 0) {
-	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+      if (list_len(WORK(1)) == 2 && strcmp(STRVAL(CAR(WORK(1)))->data, "@") == 0 && strcmp(STRVAL(CAR(CDR(WORK(1))))->data, "=") == 0) {
+	list_new(&WORK(3), CAR(CDR(WORK(0))), 0);
 	method_call_new(&WORK(3), consts.str_quote, WORK(3));
-	list_new(&WORK(4), CAR(CDR(CDR(WORK(1)))), 0);
+	list_new(&WORK(4), CAR(CDR(CDR(WORK(0)))), 0);
 	list_new(&WORK(4), WORK(3), WORK(4));
-	list_new(&WORK(4), CAR(WORK(1)), WORK(4));
+	list_new(&WORK(4), CAR(WORK(0)), WORK(4));
 	method_call_new(dst, consts.str_atc_putc, WORK(4));
 	goto done;
       }
@@ -365,15 +363,20 @@ parse_method_call(inst_t *dst)
       ;
     }
 
-    if (!(i <= 2
-	  || STRVAL(WORK(0))->size >= 2
-	     && STRVAL(WORK(0))->data[STRVAL(WORK(0))->size - 2] == ':'
-	  )
-	) {
-      goto bad_sel;
-    }
+    if (i == 2) {
+      if (index(STRVAL(WORK(2))->data, ':') != 0) {
+      inv_sel_word:
+	parse_error("Invalid selector word\n");
+      }
+    } else if (i >= 3 && (i & 1)) {
+      inst_t r;
+      for (r = WORK(1); r != 0; r = CDR(r)) {
+	inst_t s = CAR(r);
+	if (index(STRVAL(s)->data, ':') != &STRVAL(s)->data[STRVAL(s)->size - 2])  goto inv_sel_word;
+      }
+    } else  parse_error("Unexpected ]\n");
 
-    method_call_new(dst, WORK(0), WORK(1));
+    method_call_new(dst, WORK(2), WORK(0));
     
   done:
     ;
