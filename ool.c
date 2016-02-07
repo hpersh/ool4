@@ -765,7 +765,7 @@ cm_obj_tostring(void)
   if (MC_ARGC != 1)  error_argc();
   
   if (MC_ARG(0) == 0) {
-    str_newc(MC_RESULT, 1, 5, "#nil");
+    str_newc(MC_RESULT, 1, 4, "#nil");
 
     return;
   }
@@ -776,7 +776,7 @@ cm_obj_tostring(void)
 
   snprintf(buf, n, "<%s@%p>", STRVAL(cl_name)->data, MC_ARG(0));
 
-  str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
+  str_newc(MC_RESULT, 1, strlen(buf), buf);
 
   mem_free(buf, n);
 }
@@ -877,10 +877,10 @@ cm_bool_tostring(void)
   char     *s;
 
   if (BOOLVAL(MC_ARG(0))) {
-    n = 6;
+    n = 5;
     s = "#true";
   } else {
-    n = 7;
+    n = 6;
     s = "#false";
   }
 
@@ -964,7 +964,7 @@ cm_int_tostring(void)
 
   snprintf(buf, sizeof(buf), "%lld", INTVAL(MC_ARG(0)));
 
-  str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
+  str_newc(MC_RESULT, 1, strlen(buf), buf);
 }
 
 void
@@ -1050,7 +1050,7 @@ cm_float_tostring(void)
   char buf[64];
 
   snprintf(buf, sizeof(buf), "%Lg", FLOATVAL(MC_ARG(0)));
-  str_newc(MC_RESULT, 1, strlen(buf) + 1, buf);
+  str_newc(MC_RESULT, 1, strlen(buf), buf);
 }
 
 void
@@ -1128,7 +1128,7 @@ str_newc(inst_t *dst, unsigned argc, ...)
     char     *s;
     
     for (len = 0, n = argc; n > 0; --n) {
-      len += va_arg(ap, unsigned) - 1;
+      len += va_arg(ap, unsigned);
       s   =  va_arg(ap, char *);
     }
     ++len;
@@ -1141,7 +1141,7 @@ str_newc(inst_t *dst, unsigned argc, ...)
     va_start(ap, argc);
 
     for (n = argc; n > 0; --n) {
-      len = va_arg(ap, unsigned) - 1;
+      len = va_arg(ap, unsigned);
       memcpy(s, va_arg(ap, char *), len);
       s += len;
     }
@@ -1257,9 +1257,9 @@ void
 str__write(inst_t *dst, inst_t s)
 {
   FRAME_WORK_BEGIN(3) {
-    str_newc(&WORK(0), 1, 2, "`");
+    str_newc(&WORK(0), 1, 1, "`");
     inst_assign(&WORK(1), s);
-    str_newc(&WORK(2), 1, 2, "'");
+    str_newc(&WORK(2), 1, 1, "'");
     str_newv(dst, 3, &WORK(0));
   } FRAME_WORK_END;
 }
@@ -1286,7 +1286,7 @@ cm_str_write(void)
   if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
 
   FRAME_WORK_BEGIN(2) {
-    str_newc(&WORK(0), 1, 2, "\"");
+    str_newc(&WORK(0), 1, 1, "\"");
     str__write(&WORK(1), MC_ARG(0));
     str_newv(MC_RESULT, 2, &WORK(0));
   } FRAME_WORK_END;
@@ -1301,7 +1301,7 @@ cm_str_join(void)
   
   unsigned n = list_len(MC_ARG(1));
   if (n == 0) {
-    str_newc(MC_RESULT, 1, 1, "");
+    str_newc(MC_RESULT, 1, 0, "");
     return;
   }
 
@@ -1345,11 +1345,11 @@ cm_str_split(void)
   }
 
   FRAME_WORK_BEGIN(2) {
-    str_newc(&WORK(1), 1, STRVAL(MC_ARG(0))->size - match->rm_eo, s + match->rm_eo);
+    str_newc(&WORK(1), 1, STRVAL(MC_ARG(0))->size - 1 - match->rm_eo, s + match->rm_eo);
     list_new(&WORK(0), WORK(1), 0);
-    str_newc(&WORK(1), 1, match->rm_eo - match->rm_so + 1, s + match->rm_so);
+    str_newc(&WORK(1), 1, match->rm_eo - match->rm_so, s + match->rm_so);
     list_new(&WORK(0), WORK(1), WORK(0));
-    str_newc(&WORK(1), 1, match->rm_so + 1, s);
+    str_newc(&WORK(1), 1, match->rm_so, s);
     list_new(&WORK(0), WORK(1), WORK(0));
     inst_assign(MC_RESULT, WORK(0));
   } FRAME_WORK_END;
@@ -1380,7 +1380,7 @@ cm_str_slice(void)
   intval_t ofs = INTVAL(MC_ARG(1)), len = INTVAL(MC_ARG(2));
   if (!slice(&ofs, &len, STRVAL(MC_ARG(0))->size - 1))  error("Range error\n");
 
-  str_newc(MC_RESULT, 1, len + 1, STRVAL(MC_ARG(0))->data + ofs);
+  str_newc(MC_RESULT, 1, len, STRVAL(MC_ARG(0))->data + ofs);
 }
 
 void
@@ -1408,9 +1408,9 @@ cm_str_toupper(void)
   }
   *p = 0;
 
-  str_newc(MC_RESULT, 1, size, buf);
-
-  mem_free(buf, size);
+  inst_alloc(MC_RESULT, consts.cl_str);
+  STRVAL(*MC_RESULT)->size = size;
+  STRVAL(*MC_RESULT)->data = buf;
 }
 
 void
@@ -1482,11 +1482,11 @@ cm_pair_tostring_write(void)
   if (inst_of(MC_ARG(0)) != consts.cl_pair)  error_bad_arg(MC_ARG(0));
 
   FRAME_WORK_BEGIN(5) {
-    str_newc(&WORK(0), 1, 2, "(");
+    str_newc(&WORK(0), 1, 1, "(");
     inst_method_call(&WORK(1), MC_SEL, 1, &CAR(MC_ARG(0)));
-    str_newc(&WORK(2), 1, 3, ", ");
+    str_newc(&WORK(2), 1, 2, ", ");
     inst_method_call(&WORK(3), MC_SEL, 1, &CDR(MC_ARG(0)));
-    str_newc(&WORK(4), 1, 2, ")");
+    str_newc(&WORK(4), 1, 1, ")");
 
     str_newv(MC_RESULT, 5, &WORK(0));
   } FRAME_WORK_END;
@@ -1542,8 +1542,8 @@ cm_list_tostring_write(void)
 
     array_new(&WORK(0), 1 + nn);
 
-    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
-    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "(");
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 1, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 1, "(");
     for (p = &ARRAYVAL(WORK(0))->data[2], q = MC_ARG(0); q != 0; q = CDR(q)) {
       if (q != MC_ARG(0)) {
 	inst_assign(p, ARRAYVAL(WORK(0))->data[0]);
@@ -1552,7 +1552,7 @@ cm_list_tostring_write(void)
       inst_method_call(p, MC_SEL, 1, &CAR(q));
       ++p;
     }
-    str_newc(p, 1, 2, ")");
+    str_newc(p, 1, 1, ")");
 
     str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
   } FRAME_WORK_END;
@@ -1636,15 +1636,15 @@ method_call_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
 
     array_new(&WORK(0), 1 + nn);
 
-    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
-    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "[");
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 1, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 1, "[");
     s = STRVAL(CAR(inst))->data;
     for (i = 0, p = &ARRAYVAL(WORK(0))->data[2], q = CDR(inst); i < 2 || q != 0; ++i) {
       if (i & 1) {
 	inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
 	char *t = index(s, ':');
 	k = t ? t + 1 - s : strlen(s);
-	str_newc(p++, 1, k + 1, s);
+	str_newc(p++, 1, k, s);
 	s += k;
 	continue;
       }
@@ -1652,7 +1652,7 @@ method_call_tostring_write(inst_t *dst, inst_t inst, inst_t sel)
       inst_method_call(p++, sel, 1, &CAR(q));
       q = CDR(q);
     }
-    str_newc(p, 1, 2, "]");
+    str_newc(p, 1, 1, "]");
 
     str_newv(dst, nn, &ARRAYVAL(WORK(0))->data[1]);
   } FRAME_WORK_END;
@@ -1674,7 +1674,7 @@ cm_method_call_write(void)
   if (inst_of(MC_ARG(0)) != consts.cl_method_call)  error_bad_arg(MC_ARG(0));
 
   FRAME_WORK_BEGIN(2) {
-    str_newc(&WORK(0), 1, 2, "\"");
+    str_newc(&WORK(0), 1, 1, "\"");
     method_call_tostring_write(&WORK(1), MC_ARG(0), consts.str__write);
     str_newv(MC_RESULT, 2, &WORK(0));
   } FRAME_WORK_END;
@@ -1973,9 +1973,9 @@ cm_array_write(void)
 {
   FRAME_WORK_BEGIN(4) {
     array_to_list(&WORK(0), ARRAYVAL(MC_ARG(0))->size, ARRAYVAL(MC_ARG(0))->data);
-    str_newc(&WORK(1), 1, 14, "[#Array new: ");
+    str_newc(&WORK(1), 1, 13, "[#Array new: ");
     inst_method_call(&WORK(2), MC_SEL, 1, &WORK(0));
-    str_newc(&WORK(3), 1, 2, "]");
+    str_newc(&WORK(3), 1, 1, "]");
     str_newv(MC_RESULT, 3, &WORK(1));
   } FRAME_WORK_END;
 }
@@ -2121,9 +2121,9 @@ cm_dict_write(void)
 {
   FRAME_WORK_BEGIN(4) {
     dict_to_list(&WORK(0), MC_ARG(0));
-    str_newc(&WORK(1), 1, 19, "[#Dictionary new: ");
+    str_newc(&WORK(1), 1, 18, "[#Dictionary new: ");
     inst_method_call(&WORK(2), MC_SEL, 1, &WORK(0));
-    str_newc(&WORK(3), 1, 2, "]");
+    str_newc(&WORK(3), 1, 1, "]");
     str_newv(MC_RESULT, 3, &WORK(1));
   } FRAME_WORK_END;
 }
@@ -2188,14 +2188,14 @@ cm_block_tostring(void)
 
     array_new(&WORK(0), 1 + nn);
 
-    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 2, " ");
-    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 2, "{");
+    str_newc(&ARRAYVAL(WORK(0))->data[0], 1, 1, " ");
+    str_newc(&ARRAYVAL(WORK(0))->data[1], 1, 1, "{");
     inst_method_call(&ARRAYVAL(WORK(0))->data[2], consts.str__write, 1, &CAR(MC_ARG(0)));
     for (p = &ARRAYVAL(WORK(0))->data[3], q = CDR(MC_ARG(0)); q != 0; q = CDR(q)) {
       inst_assign(p++, ARRAYVAL(WORK(0))->data[0]);
       inst_method_call(p++, consts.str_tostring, 1, &CAR(q));
     }      
-    str_newc(p, 1, 2, "}");
+    str_newc(p, 1, 1, "}");
 
     str_newv(MC_RESULT, nn, &ARRAYVAL(WORK(0))->data[1]);
   } FRAME_WORK_END;
@@ -2268,7 +2268,6 @@ cm_file_read(void)
   while (fgets(buf, BUFSIZE, fp) != 0) {
     tokbuf_append(tb, strlen(buf), buf);
   }
-  tokbuf_append_char(tb, 0);
 
   str_newc(MC_RESULT, 1, tb->len, tb->buf);
 
@@ -2321,20 +2320,20 @@ void
 file_cl_init(inst_t cl)
 {
   FRAME_WORK_BEGIN(4) {
-    str_newc(&WORK(0), 1, 6, "stdin");
-    str_newc(&WORK(1), 1, 8, "<stdin>");
-    str_newc(&WORK(2), 1, 2, "r");
+    str_newc(&WORK(0), 1, 5, "stdin");
+    str_newc(&WORK(1), 1, 7, "<stdin>");
+    str_newc(&WORK(2), 1, 1, "r");
     file_new(&WORK(3), WORK(1), WORK(2), stdin);
     dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(3));
 
-    str_newc(&WORK(0), 1, 7, "stdout");
-    str_newc(&WORK(1), 1, 9, "<stdout>");
-    str_newc(&WORK(2), 1, 2, "w");
+    str_newc(&WORK(0), 1, 6, "stdout");
+    str_newc(&WORK(1), 1, 8, "<stdout>");
+    str_newc(&WORK(2), 1, 1, "w");
     file_new(&WORK(3), WORK(1), WORK(2), stdout);
     dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(3));
 
-    str_newc(&WORK(0), 1, 7, "stderr");
-    str_newc(&WORK(1), 1, 9, "<stderr>");
+    str_newc(&WORK(0), 1, 6, "stderr");
+    str_newc(&WORK(1), 1, 8, "<stderr>");
     file_new(&WORK(3), WORK(1), WORK(2), stderr);
     dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(3));
   } FRAME_WORK_END;
@@ -2385,8 +2384,8 @@ void
 file_sha1(inst_t *dst, inst_t filename)
 {
   FRAME_WORK_BEGIN(1) {
-    str_newc(&WORK(0), 2, 8, "shasum ",
-	                  STRVAL(filename)->size, STRVAL(filename)->data
+    str_newc(&WORK(0), 2, 7, "shasum ",
+	                  STRVAL(filename)->size - 1, STRVAL(filename)->data
 	     );
 
     char buf[41];
@@ -2398,7 +2397,7 @@ file_sha1(inst_t *dst, inst_t filename)
       pclose(fp);
     }
     if (ret == 0)  error("Failed to get SHA1 for file\n");
-    str_newc(dst, 1, sizeof(buf), buf);
+    str_newc(dst, 1, sizeof(buf) - 1, buf);
   } FRAME_WORK_END;
 }
 
@@ -2406,14 +2405,14 @@ void
 cm_module_new(void)
 {
   FRAME_WORK_BEGIN(3) {
-    str_newc(&WORK(2), 1, 5, "path");
+    str_newc(&WORK(2), 1, 4, "path");
     inst_t p = dict_at(CLASSVAL(MC_ARG(0))->cl_vars, WORK(2));
     if (p != 0) {
       p = CDR(p);
       if (!is_list(p))  p = 0;
     }
     if (p == 0) {
-      str_newc(&WORK(2), 1, 2, ".");
+      str_newc(&WORK(2), 1, 1, ".");
       list_new(&WORK(2), WORK(2), 0);
       p = WORK(2);
     }
@@ -2424,10 +2423,10 @@ cm_module_new(void)
       inst_t d = CAR(p);
       if (inst_of(d) != consts.cl_str)  continue;
       
-      str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
-	       2, "/",
-	       STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
-	       5, ".ool"
+      str_newc(&WORK(1), 4, STRVAL(d)->size - 1, STRVAL(d)->data,
+	                    1, "/",
+	                    STRVAL(MC_ARG(1))->size - 1, STRVAL(MC_ARG(1))->data,
+	                    4, ".ool"
 	       );
       
       struct stat sb[1];
@@ -2438,10 +2437,10 @@ cm_module_new(void)
 	break;
       }
       
-      str_newc(&WORK(1), 4, STRVAL(d)->size, STRVAL(d)->data,
-	       2, "/",
-	       STRVAL(MC_ARG(1))->size, STRVAL(MC_ARG(1))->data,
-	       4, ".so"
+      str_newc(&WORK(1), 4, STRVAL(d)->size - 1, STRVAL(d)->data,
+	                    1, "/",
+     	                    STRVAL(MC_ARG(1))->size - 1, STRVAL(MC_ARG(1))->data,
+	                    3, ".so"
 	       );
       
       if (stat(STRVAL(WORK(1))->data, sb) == 0) {
@@ -2453,10 +2452,6 @@ cm_module_new(void)
     if (p == 0)  error("Module not found\n");
     
     // WORK(1) has filename
-
-    str_newc(&WORK(2), 2, 8, "shasum ",
-	     STRVAL(WORK(1))->size, STRVAL(WORK(1))->data
-	     );
 
     file_sha1(&WORK(2), WORK(1));  // WORK(2) <- SHA1
     
@@ -2535,8 +2530,8 @@ void
 module_cl_init(inst_t cl)
 {
   FRAME_WORK_BEGIN(2) {
-    str_newc(&WORK(0), 1, 5, "path");
-    str_newc(&WORK(1), 1, 2, ".");
+    str_newc(&WORK(0), 1, 4, "path");
+    str_newc(&WORK(1), 1, 1, ".");
     dict_at_put(CLASSVAL(cl)->cl_vars, WORK(0), WORK(1));
   } FRAME_WORK_END;
 }
@@ -3031,7 +3026,7 @@ init(void)
     /* Pass 3 - Create strings */
 
     for (i = 0; i < ARRAY_SIZE(init_str_tbl); ++i) {
-      str_newc(init_str_tbl[i].str, 1, strlen(init_str_tbl[i].data) + 1, init_str_tbl[i].data);
+      str_newc(init_str_tbl[i].str, 1, strlen(init_str_tbl[i].data), init_str_tbl[i].data);
     }
 
     /* Pass 4 - Fix-up classes */
@@ -3056,7 +3051,7 @@ init(void)
     module_new(&consts.module_main, consts.str_main, 0, 0);
     dict_at_put(consts.module_main, consts.str_main, consts.module_main);
     dict_at_put(consts.module_main, consts.str_metaclass, consts.metaclass);
-    str_newc(&WORK(0), 1, 5, "#nil");
+    str_newc(&WORK(0), 1, 4, "#nil");
     dict_at_put(consts.module_main, WORK(0), 0);
     bool_new(&WORK(0), 1);
     dict_at_put(consts.module_main, consts.str_true, WORK(0));
@@ -3100,7 +3095,7 @@ code_module_add(struct init_code_module *cm)
     unsigned i;
     
     for (i = 0; i < cm->init_str_size; ++i) {
-      str_newc(cm->init_str[i].str, 1, strlen(cm->init_str[i].data) + 1, cm->init_str[i].data);
+      str_newc(cm->init_str[i].str, 1, strlen(cm->init_str[i].data), cm->init_str[i].data);
     }
     
     for (i = 0; i < cm->init_cl_size; ++i) {

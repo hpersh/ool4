@@ -5,8 +5,10 @@ CFLAGS_DEBUG	= -g
 CFLAGS_PROFILE	= -pg -O3 -DNDEBUG
 CFLAGS_OPT	= -O3 -fomit-frame-pointer -DNDEBUG
 
-CC	= $(CC_CLANG)
-CFLAGS	= $(CFLAGS_OPT)
+CC_DEBUG	= $(CC_GCC) $(CFLAGS_DEBUG)
+CC_OPT		= $(CC_CLANG) $(CFLAGS_OPT)
+
+CC	= $(CC_DEBUG)
 
 all:	ool math.so process.so socket.so net.so
 

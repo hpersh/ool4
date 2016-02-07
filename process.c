@@ -94,16 +94,15 @@ process_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
   FRAME_WORK_BEGIN(2) {
     int_new(&PROCESSVAL(inst)->pid, pid);
 
-    str_newc(&WORK(0), 1, 8, "<stdin>");
-    str_newc(&WORK(1), 1, 2, "w");
+    str_newc(&WORK(0), 1, 7, "<stdin>");
+    str_newc(&WORK(1), 1, 1, "w");
     file_new(&PROCESSVAL(inst)->stdin, WORK(0), WORK(1), fdopen(fd[0][1], "w"));
 
-    str_newc(&WORK(0), 1, 9, "<stdout>");
-    str_newc(&WORK(1), 1, 2, "r");
+    str_newc(&WORK(0), 1, 8, "<stdout>");
+    str_newc(&WORK(1), 1, 1, "r");
     file_new(&PROCESSVAL(inst)->stdout, WORK(0), WORK(1), fdopen(fd[1][0], "r"));
 
-    str_newc(&WORK(0), 1, 9, "<stderr>");
-    str_newc(&WORK(1), 1, 2, "r");
+    str_newc(&WORK(0), 1, 8, "<stderr>");
     file_new(&PROCESSVAL(inst)->stderr, WORK(0), WORK(1), fdopen(fd[2][0], "r"));
   } FRAME_WORK_END;
 

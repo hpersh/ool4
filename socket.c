@@ -181,16 +181,16 @@ cm_socket_read(void)
   if (inst_of(MC_ARG(1)) != consts.cl_int)            error_bad_arg(MC_ARG(1));
 
   unsigned n = INTVAL(MC_ARG(1));
-  char *buf = mem_alloc(n + 1, false);
+  char *buf = mem_alloc(n, false);
   int rc = read(SOCKETVAL(MC_ARG(0))->fd, buf, n);
   if (rc < 0) {
     perror(0);
     error(0);
   }
   
-  str_newc(MC_RESULT, 1, rc + 1, buf);
+  str_newc(MC_RESULT, 1, rc, buf);
 
-  mem_free(buf, n + 1);
+  mem_free(buf, n);
 }
 
 static void

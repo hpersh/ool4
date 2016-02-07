@@ -112,98 +112,6 @@ tokbuf_append_char(struct tokbuf *tb, char c)
   tokbuf_append(tb, 1, &c);
 }
 
-bool
-token_get(void)
-{
-  struct stream *str = oolvm->inpfp->str;
-  struct tokbuf *tb = oolvm->inpfp->tb;
-  char          c;
-
-  tb->len = 0;
-
- again:
-  for (;;) {
-    c = stream_getc(str);
-    if (c < 0) {
-      goto done;
-    }
-
-    if (!isspace(c))  break;
-  }
-
-  if (c == '%') {
-    for (;;) {
-      c = stream_getc(str);
-      if (c < 0) {
-	goto done;
-      }
-
-      if (c == '\n')  break;
-    }
-    
-    goto again;
-  }
-  
-  tokbuf_append_char(tb, c);
-
-  if (c == '`') {
-    unsigned depth = 1;
-  
-    for (;;) {
-      c = stream_getc(str);
-      if (c < 0)  goto done;
-      
-      if (c == '`')  ++depth;
-      
-      if (c == '\'')  --depth;
-      
-      tokbuf_append_char(tb, c);
-      
-      if (c == '\'' && depth == 0) {
-	goto done;
-      }
-    }
-  }
-
-  if (c == '=') {
-    c = stream_getc(str);
-
-    if (c == '!') {
-      tokbuf_append_char(tb, c);
-    } else if (c >= 0) {
-      stream_ungetc(str, c);
-    }
-
-    goto done;
-  }
-
-  if (isspecial(c)) {
-    goto done;
-  }
-
-  for (;;) {
-    c = stream_getc(str);
-    if (c < 0 || isspace(c)) {
-      goto done;
-    }
-    if (isspecial(c)) {
-      stream_ungetc(str, c);
-      goto done;
-    }
-
-    tokbuf_append_char(tb, c);
-  }
-
- done:
-  if (tb->len == 0)  return (false);
-  
-  tokbuf_append_char(tb, 0);
-  
-  return (true);
-}
-
-void parse_token(inst_t *dst);
-
 void
 parse_error(char *fmt, ...)
 {
@@ -227,6 +135,82 @@ parse_error(char *fmt, ...)
 
   error(0);
 }
+
+bool
+token_get(void)
+{
+  struct stream *str = oolvm->inpfp->str;
+  struct tokbuf *tb = oolvm->inpfp->tb;
+  char          c;
+
+  tb->len = 0;
+
+ again:
+  for (;;) {
+    c = stream_getc(str);
+    if (c < 0)  return (false);
+
+    if (!isspace(c))  break;
+  }
+
+  if (c == '%') {
+    for (;;) {
+      c = stream_getc(str);
+      if (c < 0)  return (false);
+
+      if (c == '\n')  goto again;
+    }
+  }
+  
+  tokbuf_append_char(tb, c);
+
+  if (c == '`') {
+    unsigned depth = 1;
+  
+    for (;;) {
+      c = stream_getc(str);
+      if (c < 0)  parse_error("Premature EOF\n");
+      
+      if (c == '`')  ++depth;
+      
+      if (c == '\'')  --depth;
+      
+      tokbuf_append_char(tb, c);
+      
+      if (c == '\'' && depth == 0)  return (true);
+    }
+  }
+
+  if (c == '=') {
+    c = stream_getc(str);
+
+    if (c == '!') {
+      tokbuf_append_char(tb, c);
+    } else if (c >= 0) {
+      stream_ungetc(str, c);
+    }
+
+    return (true);
+  }
+
+  if (isspecial(c))  return (true);
+
+  for (;;) {
+    c = stream_getc(str);
+    if (c < 0 || isspace(c))  break;
+
+    if (isspecial(c)) {
+      stream_ungetc(str, c);
+      break;
+    }
+
+    tokbuf_append_char(tb, c);
+  }
+  
+  return (true);
+}
+
+void parse_token(inst_t *dst);
 
 void
 parse_quote(inst_t *dst)
@@ -253,11 +237,9 @@ parse_pair_or_list(inst_t *dst)
     inst_t   *p;
   
     for (i = 0, p = &WORK(0); ; ++i) {
-      if (!token_get()) {
-	parse_error("Premature EOF\n");
-      }
+      if (!token_get())  parse_error("Premature EOF\n");
 
-      if (tb->len == 2) {
+      if (tb->len == 1) {
 	switch (tb->buf[0]) {
 	case ']':
 	case '}':
@@ -273,9 +255,7 @@ parse_pair_or_list(inst_t *dst)
 	}
       }
 	
-      if (pairf && i > 2) {
-	parse_error("Malformed pair\n");
-      }
+      if (pairf && i > 2)  parse_error("Malformed pair\n");
 
       parse_token(&WORK(1));
       list_new(p, WORK(1), 0);
@@ -301,87 +281,102 @@ parse_method_call(inst_t *dst)
     inst_t   *p;
 
     for (i = 0, p = &WORK(1); ; ++i) {
-      if (!token_get()) {
-	parse_error("Premature EOF\n");
-      }
+      if (!token_get())  parse_error("Premature EOF\n");
 
-      if (tb->len == 2) {
+      if (tb->len == 1) {
 	switch (tb->buf[0]) {
 	case ')':
 	case '}':
 	  parse_error("Expected ]\n");
 	case ']':
-	  goto done;
+	  goto got;
 	default:
 	  ;
 	}
       }
       
-      parse_token(&WORK(2));
-      
       if (i & 1) {
-	if (inst_of(WORK(2)) != consts.cl_str) {
-	  parse_error("Selector must be string\n");
-	}
-	
 	if (i == 1) {
-	  inst_assign(&WORK(0), WORK(2));
-	} else {
-	  str_newc(&WORK(0), 2, STRVAL(WORK(0))->size, STRVAL(WORK(0))->data,
-		                STRVAL(WORK(2))->size, STRVAL(WORK(2))->data
-		   );
+	  str_newc(&WORK(0), 1, tb->len, tb->buf);
+	  continue;
 	}
-	
+
+	if (!(i == 3 && strcmp(STRVAL(WORK(0))->data, "@") == 0 && tb->len == 1 && tb->buf[0] == '='
+	      || STRVAL(WORK(0))->size >= 2 && STRVAL(WORK(0))->data[STRVAL(WORK(0))->size - 2] == ':'
+	      )
+	    ) {
+	bad_sel:
+	  parse_error("Selector word must end in :\n");
+	}	
+
+	str_newc(&WORK(0), 2, STRVAL(WORK(0))->size - 1, STRVAL(WORK(0))->data,
+		              tb->len, tb->buf
+		 );
 	continue;
       }
-      
-      if (i > 0
-	  && !(i == 2 && (strcmp(STRVAL(WORK(0))->data, "=") == 0
-			  || strcmp(STRVAL(WORK(0))->data, "=!") == 0
-			  || strcmp(STRVAL(WORK(0))->data, "@") == 0
-			  )
-	       || i == 4 && strcmp(STRVAL(WORK(0))->data, "@=") == 0
-	       || STRVAL(WORK(0))->size >= 2 && STRVAL(WORK(0))->data[STRVAL(WORK(0))->size - 2] == ':'
-	       )
-	  ) {
-	parse_error("Selector word must end in :\n");
-      }
-	
+
+      parse_token(&WORK(2));      
       list_new(p, WORK(2), 0);
       p = &CDR(*p);
     }
 
+  got:
+    switch (i) {
+    case 3:
+      if (strcmp(STRVAL(WORK(0))->data, "=!") == 0) {
+	list_new(&WORK(3), CAR(WORK(1)), 0);
+	method_call_new(&WORK(3), consts.str_quote, WORK(3));
+	list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
+	list_new(&WORK(4), WORK(3), WORK(4));
+	list_new(&WORK(4), consts.cl_env, WORK(4));
+	method_call_new(dst, consts.str_atc_defc, WORK(4));
+	goto done;
+      }
+      if (strcmp(STRVAL(WORK(0))->data, "=") == 0) {
+	list_new(&WORK(3), CAR(WORK(1)), 0);
+	method_call_new(&WORK(3), consts.str_quote, WORK(3));
+	list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
+	list_new(&WORK(4), WORK(3), WORK(4));
+	list_new(&WORK(4), consts.cl_env, WORK(4));
+	method_call_new(dst, consts.str_atc_putc, WORK(4));
+	goto done;
+      }
+      if (strcmp(STRVAL(WORK(0))->data, "@") == 0) {
+	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+	method_call_new(&WORK(3), consts.str_quote, WORK(3));
+	list_new(&WORK(3), WORK(3), 0);
+	list_new(&WORK(3), CAR(WORK(1)), WORK(3));
+	method_call_new(dst, consts.str_atc, WORK(3));
+	goto done;
+      }
+      break;
+    case 5:
+      if (strcmp(STRVAL(WORK(0))->data, "@=") == 0) {
+	list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
+	method_call_new(&WORK(3), consts.str_quote, WORK(3));
+	list_new(&WORK(4), CAR(CDR(CDR(WORK(1)))), 0);
+	list_new(&WORK(4), WORK(3), WORK(4));
+	list_new(&WORK(4), CAR(WORK(1)), WORK(4));
+	method_call_new(dst, consts.str_atc_putc, WORK(4));
+	goto done;
+      }
+      break;
+    default:
+      ;
+    }
+
+    if (!(i <= 2
+	  || STRVAL(WORK(0))->size >= 2
+	     && STRVAL(WORK(0))->data[STRVAL(WORK(0))->size - 2] == ':'
+	  )
+	) {
+      goto bad_sel;
+    }
+
+    method_call_new(dst, WORK(0), WORK(1));
+    
   done:
     ;
-    bool deff = false;
-    
-    if (i == 3
-	&& (strcmp(STRVAL(WORK(0))->data, "=") == 0
-	    || (deff = (strcmp(STRVAL(WORK(0))->data, "=!") == 0))
-	    )
-	) {
-      list_new(&WORK(3), CAR(WORK(1)), 0);
-      method_call_new(&WORK(3), consts.str_quote, WORK(3));
-      list_new(&WORK(4), CAR(CDR(WORK(1))), 0);
-      list_new(&WORK(4), WORK(3), WORK(4));
-      list_new(&WORK(4), consts.cl_env, WORK(4));
-      method_call_new(dst, deff ? consts.str_atc_defc : consts.str_atc_putc, WORK(4));
-    } else if (i == 3 && strcmp(STRVAL(WORK(0))->data, "@") == 0) {
-      list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
-      method_call_new(&WORK(3), consts.str_quote, WORK(3));
-      list_new(&WORK(3), WORK(3), 0);
-      list_new(&WORK(3), CAR(WORK(1)), WORK(3));
-      method_call_new(dst, consts.str_atc, WORK(3));
-    } else if (i == 5 && strcmp(STRVAL(WORK(0))->data, "@=") == 0) {
-      list_new(&WORK(3), CAR(CDR(WORK(1))), 0);
-      method_call_new(&WORK(3), consts.str_quote, WORK(3));
-      list_new(&WORK(4), CAR(CDR(CDR(WORK(1)))), 0);
-      list_new(&WORK(4), WORK(3), WORK(4));
-      list_new(&WORK(4), CAR(WORK(1)), WORK(4));
-      method_call_new(dst, consts.str_atc_putc, WORK(4));
-    } else {
-      method_call_new(dst, WORK(0), WORK(1));
-    }
   } FRAME_WORK_END;
 }
 
@@ -395,11 +390,9 @@ parse_block(inst_t *dst)
     inst_t    *p;
 
     for (i = 0, p = &WORK(1); ; ++i) {
-      if (!token_get()) {
-	parse_error("Premature EOF\n");
-      }
+      if (!token_get())  parse_error("Premature EOF\n");
 
-      if (tb->len == 2){
+      if (tb->len == 1){
 	switch (tb->buf[0]) {
 	case ')':
 	case ']':
@@ -414,9 +407,7 @@ parse_block(inst_t *dst)
       parse_token(&WORK(2));
       
       if (i == 0) {
-	if (!is_list(WORK(2))) {
-	  parse_error("Block args must be list\n");
-	}
+	if (!is_list(WORK(2)))  parse_error("Block args must be list\n");
 	
 	inst_assign(&WORK(0), WORK(2));
 	
@@ -437,7 +428,7 @@ tok_is_float(void)
 {
   struct tokbuf *tb = oolvm->inpfp->tb;
   char     *p = tb->buf, c;
-  unsigned n  = tb->len - 1, k;
+  unsigned n  = tb->len, k;
 
   if (n == 0)  return (false);
 
@@ -485,6 +476,7 @@ parse_float(inst_t *dst)
   struct tokbuf *tb = oolvm->inpfp->tb;
   floatval_t    val;
 
+  tokbuf_append_char(tb, 0);
   sscanf(tb->buf, "%Lg", &val);
   float_new(dst, val);
 }
@@ -494,7 +486,7 @@ tok_is_int(void)
 {
   struct tokbuf *tb = oolvm->inpfp->tb;
   char     *p = tb->buf, c;
-  unsigned n  = tb->len - 1, k;
+  unsigned n  = tb->len, k;
 
   if (n > 0 && *p == '-') {
     ++p;  --n;
@@ -512,7 +504,7 @@ tok_is_hex(void)
 {
   struct tokbuf *tb = oolvm->inpfp->tb;
   char     *p = tb->buf, c;
-  unsigned n  = tb->len - 1, k;
+  unsigned n  = tb->len, k;
 
   if (!(n >= 2 && p[0] == '0' && toupper(p[1]) == 'X'))  return (false);
 
@@ -540,6 +532,7 @@ parse_int(inst_t *dst)
     s   = tb->buf;
   }
 
+  tokbuf_append_char(tb, 0);
   sscanf(s, fmt, &val);
   int_new(dst, val);
 }
@@ -558,7 +551,7 @@ parse_quoted_str(inst_t *dst)
   struct tokbuf *tb = oolvm->inpfp->tb;
 
   char     *p = tb->buf + 1, c;
-  unsigned n  = tb->len - 3;
+  unsigned n  = tb->len - 2;
 
   while (n > 0) {
     if (*p == '\\') {
@@ -592,7 +585,7 @@ parse_quoted_str(inst_t *dst)
     --n;
   }
 
-  str_newc(dst, 1, tb->len - 2, tb->buf + 1);
+  str_newc(dst, 1, tb->len - 1, tb->buf + 1);
 }
 
 void
@@ -600,7 +593,7 @@ parse_token(inst_t *dst)
 {
   struct tokbuf *tb = oolvm->inpfp->tb;
   
-  if (tb->len == 2) {
+  if (tb->len == 1) {
     switch (tb->buf[0]) {
     case '"':
       parse_quote(dst);
