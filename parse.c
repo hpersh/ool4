@@ -585,7 +585,7 @@ parse_quoted_str(inst_t *dst)
     --n;
   }
 
-  str_newc(dst, 1, tb->len - 1, tb->buf + 1);
+  str_newc(dst, 1, tb->len - 2, tb->buf + 1);
 }
 
 void

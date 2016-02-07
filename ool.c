@@ -1325,7 +1325,7 @@ cm_str_join(void)
 }
 
 void
-cm_str_split(void)
+cm_str_match(void)
 {
   if (MC_ARGC != 2)  error_argc();
   if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
@@ -1345,13 +1345,9 @@ cm_str_split(void)
   }
 
   FRAME_WORK_BEGIN(2) {
-    str_newc(&WORK(1), 1, STRVAL(MC_ARG(0))->size - 1 - match->rm_eo, s + match->rm_eo);
-    list_new(&WORK(0), WORK(1), 0);
-    str_newc(&WORK(1), 1, match->rm_eo - match->rm_so, s + match->rm_so);
-    list_new(&WORK(0), WORK(1), WORK(0));
-    str_newc(&WORK(1), 1, match->rm_so, s);
-    list_new(&WORK(0), WORK(1), WORK(0));
-    inst_assign(MC_RESULT, WORK(0));
+    int_new(&WORK(0), rc == REG_NOMATCH ? 0 : match->rm_so);
+    int_new(&WORK(1), rc == REG_NOMATCH ? 0 : match->rm_eo - match->rm_so);
+    pair_new(MC_RESULT, WORK(0), WORK(1));
   } FRAME_WORK_END;
 }
 
@@ -2841,6 +2837,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_load,        "load" },
   { &consts.str_ltc,         "lt:" },
   { &consts.str_main,        "#main" },
+  { &consts.str_matchc,      "match:" },
   { &consts.str_metaclass,   "#Metaclass" },
   { &consts.str_method_call, "#Method_Call" },
   { &consts.str_module,      "#Module" },
@@ -2858,7 +2855,6 @@ struct init_str init_str_tbl[] = {
   { &consts.str_readc,       "read:" },
   { &consts.str_sha1,        "sha1" },
   { &consts.str_size,        "size" },
-  { &consts.str_splitc,      "split:" },
   { &consts.str_string,      "#String" },
   { &consts.str_system,      "#System" },
   { &consts.str_tostring,    "tostring" },
@@ -2920,10 +2916,10 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,      cm_str__write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,       cm_str_write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_joinc,       cm_str_join },
-  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_splitc,      cm_str_split },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_atc_lengthc, cm_str_slice },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_size,        cm_str_size },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_toupper,     cm_str_toupper },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_matchc,      cm_str_match },
 
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_car, cm_dptr_car },
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_cdr, cm_dptr_cdr },

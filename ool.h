@@ -290,6 +290,7 @@ struct {
   inst_t str_load;
   inst_t str_ltc;
   inst_t str_main;
+  inst_t str_matchc;
   inst_t str_metaclass;
   inst_t str_method_call;
   inst_t str_module;
@@ -308,7 +309,6 @@ struct {
   inst_t str_sha1;
   inst_t str_size;
   inst_t str_string;
-  inst_t str_splitc;
   inst_t str_system;
   inst_t str_tostring;
   inst_t str_toupper;
