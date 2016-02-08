@@ -251,6 +251,7 @@ struct {
   inst_t str_addc;
   inst_t str_aandc;
   inst_t str_andc;
+  inst_t str_asc;
   inst_t str_atc;
   inst_t str_atc_defc;
   inst_t str_atc_lengthc;
@@ -261,6 +262,7 @@ struct {
   inst_t str_byte_array;
   inst_t str_car;
   inst_t str_cdr;
+  inst_t str_chr;
   inst_t str_class_methods;
   inst_t str_class_variables;
   inst_t str_code_method;
@@ -280,6 +282,8 @@ struct {
   inst_t str_gtc;
   inst_t str_float;
   inst_t str_hash;
+  inst_t str_hex;
+  inst_t str_imatchc;
   inst_t str_instance_methods;
   inst_t str_instance_of;
   inst_t str_instance_variables;

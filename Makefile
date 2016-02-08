@@ -8,7 +8,8 @@ CFLAGS_OPT	= -O3 -fomit-frame-pointer -DNDEBUG
 CC_DEBUG	= $(CC_GCC) $(CFLAGS_DEBUG)
 CC_OPT		= $(CC_CLANG) $(CFLAGS_OPT)
 
-CC	= $(CC_DEBUG)
+#CC	= $(CC_DEBUG)
+CC	= $(CC_OPT)
 
 all:	ool math.so process.so socket.so net.so
 

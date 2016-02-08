@@ -968,6 +968,31 @@ cm_int_tostring(void)
 }
 
 void
+cm_int_hex(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+
+  char buf[2 + 16 + 1];
+
+  snprintf(buf, sizeof(buf), "%#llx", INTVAL(MC_ARG(0)));
+  str_newc(MC_RESULT, 1, strlen(buf), buf);
+}
+
+void
+cm_int_chr(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_int))  error_bad_arg(MC_ARG(0));
+  intval_t val = INTVAL(MC_ARG(0));
+  if (val < 0 || val > 0xff)  error_bad_arg(MC_ARG(0));
+
+  char buf[1];
+  buf[0] = val;
+  str_newc(MC_RESULT, 1, 1, buf);
+}
+
+void
 float_init(inst_t inst, inst_t cl, unsigned argc, va_list ap)
 {
   assert(argc >= 1);
@@ -1325,20 +1350,15 @@ cm_str_join(void)
 }
 
 void
-cm_str_match(void)
+str_match(inst_t *dst, inst_t str, inst_t pat, bool ign_casef)
 {
-  if (MC_ARGC != 2)  error_argc();
-  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
-  if (!is_kind_of(MC_ARG(1), consts.cl_str))  error_bad_arg(MC_ARG(1));	
-  
   regex_t regex[1];
-  if (regcomp(regex, STRVAL(MC_ARG(1))->data, 0) != 0) {
-    error_bad_arg(MC_ARG(1));
+  if (regcomp(regex, STRVAL(pat)->data, ign_casef ? REG_ICASE : 0) != 0) {
+    error_bad_arg(pat);
   }
 
-  char *s = STRVAL(MC_ARG(0))->data;
   regmatch_t match[1];
-  int rc = regexec(regex, s, ARRAY_SIZE(match), match, 0);
+  int rc = regexec(regex, STRVAL(str)->data, ARRAY_SIZE(match), match, 0);
   regfree(regex);
   if (!(rc == 0 || rc == REG_NOMATCH)) {
     error("Match failure\n");
@@ -1347,8 +1367,28 @@ cm_str_match(void)
   FRAME_WORK_BEGIN(2) {
     int_new(&WORK(0), rc == REG_NOMATCH ? 0 : match->rm_so);
     int_new(&WORK(1), rc == REG_NOMATCH ? 0 : match->rm_eo - match->rm_so);
-    pair_new(MC_RESULT, WORK(0), WORK(1));
+    pair_new(dst, WORK(0), WORK(1));
   } FRAME_WORK_END;
+}
+
+void
+cm_str_match(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_str))  error_bad_arg(MC_ARG(1));	
+  
+  str_match(MC_RESULT, MC_ARG(0), MC_ARG(1), false);
+}
+
+void
+cm_str_imatch(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_str))  error_bad_arg(MC_ARG(1));	
+  
+  str_match(MC_RESULT, MC_ARG(0), MC_ARG(1), true);
 }
 
 bool
@@ -1366,17 +1406,32 @@ slice(intval_t *ofs, intval_t *len, intval_t size)
 }
 
 void
+str_slice(inst_t *dst, inst_t str, intval_t ofs, intval_t len)
+{
+  if (!slice(&ofs, &len, STRVAL(str)->size - 1))  error("Range error\n");
+
+  str_newc(MC_RESULT, 1, len, STRVAL(str)->data + ofs);
+}
+
+void
+cm_str_at(void)
+{
+  if (MC_ARGC != 2)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
+  if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));	
+
+  str_slice(MC_RESULT, MC_ARG(0), INTVAL(MC_ARG(1)), 1);
+}
+
+void
 cm_str_slice(void)
 {
   if (MC_ARGC != 3)  error_argc();
   if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
   if (!is_kind_of(MC_ARG(1), consts.cl_int))  error_bad_arg(MC_ARG(1));	
   if (!is_kind_of(MC_ARG(2), consts.cl_int))  error_bad_arg(MC_ARG(2));	
-  
-  intval_t ofs = INTVAL(MC_ARG(1)), len = INTVAL(MC_ARG(2));
-  if (!slice(&ofs, &len, STRVAL(MC_ARG(0))->size - 1))  error("Range error\n");
 
-  str_newc(MC_RESULT, 1, len, STRVAL(MC_ARG(0))->data + ofs);
+  str_slice(MC_RESULT, MC_ARG(0), INTVAL(MC_ARG(1)), INTVAL(MC_ARG(2)));  
 }
 
 void
@@ -1407,6 +1462,15 @@ cm_str_toupper(void)
   inst_alloc(MC_RESULT, consts.cl_str);
   STRVAL(*MC_RESULT)->size = size;
   STRVAL(*MC_RESULT)->data = buf;
+}
+
+void
+cm_str_asc(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_kind_of(MC_ARG(0), consts.cl_str) || STRVAL(MC_ARG(0))->size != 2)  error_bad_arg(MC_ARG(0));
+  
+  int_new(MC_RESULT, STRVAL(MC_ARG(0))->data[0]);
 }
 
 void
@@ -2798,6 +2862,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_addc,        "add:" },
   { &consts.str_aandc,       "&and:" },
   { &consts.str_andc,        "and:" },
+  { &consts.str_asc,         "asc" },
   { &consts.str_atc,         "at:" },
   { &consts.str_atc_defc,    "at:def:" },
   { &consts.str_atc_lengthc, "at:length:" },
@@ -2808,6 +2873,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_byte_array,  "#Byte-array" },
   { &consts.str_car,         "car" },
   { &consts.str_cdr,         "cdr" },
+  { &consts.str_chr,         "chr" },
   { &consts.str_class_methods, "class-methods" },
   { &consts.str_class_variables, "class-variables" },
   { &consts.str_code_method, "#Code-method" },
@@ -2827,6 +2893,8 @@ struct init_str init_str_tbl[] = {
   { &consts.str_float,       "#Float" },
   { &consts.str_gtc,         "gt:" },
   { &consts.str_hash,        "hash" },
+  { &consts.str_hex,         "hex" },
+  { &consts.str_imatchc,     "imatch:" },
   { &consts.str_instance_methods, "instance-methods" },
   { &consts.str_instance_of, "instance-of" },
   { &consts.str_instance_variables, "instance-variables" },
@@ -2900,6 +2968,8 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_ltc,      cm_int_lt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_gtc,      cm_int_gt },
   { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_int_tostring },
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_hex,      cm_int_hex },
+  { &consts.cl_int, CLASSVAL_OFS(inst_methods), &consts.str_chr,      cm_int_chr },
 
   { &consts.cl_float, CLASSVAL_OFS(cl_methods), &consts.str_newc, cm_float_new },
 
@@ -2916,10 +2986,13 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str__write,      cm_str__write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_write,       cm_str_write },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_joinc,       cm_str_join },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_atc,         cm_str_at },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_atc_lengthc, cm_str_slice },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_size,        cm_str_size },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_toupper,     cm_str_toupper },
   { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_matchc,      cm_str_match },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_imatchc,     cm_str_imatch },
+  { &consts.cl_str, CLASSVAL_OFS(inst_methods), &consts.str_asc,         cm_str_asc },
 
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_car, cm_dptr_car },
   { &consts.cl_dptr, CLASSVAL_OFS(inst_methods), &consts.str_cdr, cm_dptr_cdr },
