@@ -5,17 +5,17 @@
 [#Metaclass new: "Complex parent: #Object instance-variables: "(re im)]
 
 [[Complex class-methods] @ new: =
-	  {(cl args) [z =! [[[[#Object class-methods] @ new] cdr] eval: (cl)]]
+	  {cl args | [z =! [[[[#Object class-methods] @ new] cdr] eval: (cl)]]
 	             [z @ re = [#Float new: [args car]]]
 		     [z @ im = [#Float new: [args cdr]]]
 		     z
 	  }
 ]
 
-[[Complex class-methods] @ new = {(cl) [Complex new: (0.0, 0.0)]}]
+[[Complex class-methods] @ new = {cl | [Complex new: (0.0, 0.0)]}]
 
 [[Complex instance-methods] @ tostring =
-	{(z) [(([[z @ im] equal: 0.0], [[z @ re] tostring])
+	{z | [(([[z @ im] equal: 0.0], [[z @ re] tostring])
 	       (#true, ["`' join: ([(([[z @ re] equal: 0.0], "`')
 	                             (#true, [[z @ re] tostring])
 	                            ) &cond
@@ -35,9 +35,9 @@
 ]
 
 [[Complex instance-methods] @ mag =
-	{(z) [[[[z @ re] mult: [z @ re]] add: [[z @ im] mult: [z @ im]]] sqrt]}
+	{z | [[[[z @ re] mult: [z @ re]] add: [[z @ im] mult: [z @ im]]] sqrt]}
 ]
 
 [[Complex instance-methods] @ arg =
-	{(z) [[z @ im] atan2: [z @ re]]}
+	{z | [[z @ im] atan2: [z @ re]]}
 ]

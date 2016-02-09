@@ -1624,10 +1624,25 @@ cm_list_tostring_write(void)
 }
 
 void
+cm_list_prog(void)
+{
+  if (MC_ARGC != 1)  error_argc();
+  if (!is_list(MC_ARG(0)))  error_bad_arg(MC_ARG(0));
+  
+  FRAME_WORK_BEGIN(1) {
+    inst_t p;
+    for (p = MC_ARG(0); p != 0; p = CDR(p)) {
+      inst_method_call(&WORK(0), consts.str_eval, 1, &CAR(p));
+    }
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
 cm_list_cond(void)
 {
   if (MC_ARGC != 1)  error_argc();
-  if (inst_of(MC_ARG(0)) != consts.cl_list)  error_bad_arg(MC_ARG(0));
+  if (!is_list(MC_ARG(0)))  error_bad_arg(MC_ARG(0));
 
   FRAME_WORK_BEGIN(1) {
     inst_t p;
@@ -2939,6 +2954,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_object,      "#Object" },
   { &consts.str_not,         "not" },
   { &consts.str_pair,        "#Pair" },
+  { &consts.str_prog,        "&prog" },
   { &consts.str_quote,       "&quote" },
   { &consts.str_read,        "read" },
   { &consts.str_readc,       "read:" },
@@ -3028,6 +3044,7 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_tostring, cm_list_tostring_write },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str__write,   cm_list_tostring_write },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_write,    cm_list_tostring_write },
+  { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_prog,     cm_list_prog },
   { &consts.cl_list, CLASSVAL_OFS(inst_methods), &consts.str_cond,     cm_list_cond },
 
   { &consts.cl_code_method, CLASSVAL_OFS(inst_methods), &consts.str_evalc, cm_code_method_eval },

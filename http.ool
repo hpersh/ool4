@@ -4,7 +4,7 @@
 [#Metaclass new: "Http parent: #Object instance-variables: "(host ipaddr)]
 
 [[Http class-methods] @ new: =
-	  {(cl host) [result =! [[[[#Object class-methods] @ new] cdr] eval: (cl)]]
+	  {cl host | [result =! [[[[#Object class-methods] @ new] cdr] eval: (cl)]]
 	             [result @ host = host]
                      [result @ ipaddr = [[net @ Net] gethostbyname: host]]
                      result
@@ -12,17 +12,15 @@
 ]
 
 [[Http instance-methods] @ get: =
-	{(self url) [socket =! [[socket @ Socket] new: ([[socket @ Socket] AF_INET], [[socket @ Socket] SOCK_STREAM])]]
+	{self url | [socket =! [[socket @ Socket] new: ([[socket @ Socket] AF_INET], [[socket @ Socket] SOCK_STREAM])]]
 		    [socket connect: ([self @ ipaddr], 80)]
 		    [socket write: ["`' join: ("`GET ' url "` HTTP/1.1\r\nHost: ' [self @ host] "`\r\n\r\n')]]
 		    [result =! "`']
 		    [runf =! #true]
-		    [runf &while:
-			[{() [in =! [socket read: 512]]
-			     [result = ["`' join: (result in)]]
-			     [runf = [[[in imatch: "`</html>\n\n*$'] cdr] equal: 0]]
-			 } eval: ()
-			]
+		    [runf &while: { [in =! [socket read: 512]]
+			            [result = ["`' join: (result in)]]
+			            [runf = [[[in imatch: "`</html>\n\n*$'] cdr] equal: 0]]
+                                  }
 		    ]
 	}
 ]

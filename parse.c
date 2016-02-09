@@ -78,6 +78,7 @@ isspecial(unsigned c)
   case ']':
   case '{':
   case '}':
+  case '|':
   case '=':
   case '@':
     return (true);
@@ -384,15 +385,16 @@ parse_method_call(inst_t *dst)
 }
 
 void
-parse_block(inst_t *dst)
+parse_prog_or_block(inst_t *dst)
 {
   struct tokbuf *tb = oolvm->inpfp->tb;
 
   FRAME_WORK_BEGIN(3) {
     unsigned i;
     inst_t    *p;
+    bool     blockf = false;
 
-    for (i = 0, p = &WORK(1); ; ++i) {
+    for (i = 0, p = &WORK(0); ; ++i) {
       if (!token_get())  parse_error("Premature EOF\n");
 
       if (tb->len == 1){
@@ -400,6 +402,11 @@ parse_block(inst_t *dst)
 	case ')':
 	case ']':
 	  parse_error("Expected }\n");
+	case '|':
+	  inst_assign(&WORK(1), WORK(0));
+	  inst_assign(p = &WORK(0), 0);
+	  blockf = true;
+	  continue;
 	case '}':
 	  goto done;
 	default:
@@ -408,21 +415,17 @@ parse_block(inst_t *dst)
       }
 
       parse_token(&WORK(2));
-      
-      if (i == 0) {
-	if (!is_list(WORK(2)))  parse_error("Block args must be list\n");
-	
-	inst_assign(&WORK(0), WORK(2));
-	
-	continue;
-      }
-      
       list_new(p, WORK(2), 0);
       p = &CDR(*p);
     }
     
   done:
-    block_new(dst, WORK(0), WORK(1));
+    if (blockf) {
+      block_new(dst, WORK(1), WORK(0));
+    } else {
+      list_new(&WORK(0), WORK(0), 0);
+      method_call_new(dst, consts.str_prog, WORK(0));
+    }
   } FRAME_WORK_END;
 }
 
@@ -611,7 +614,7 @@ parse_token(inst_t *dst)
       return;
 
     case '{':
-      parse_block(dst);
+      parse_prog_or_block(dst);
       return;
 
     case ')':

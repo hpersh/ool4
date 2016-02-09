@@ -308,6 +308,7 @@ struct {
   inst_t str_newc_parentc_instancevariablesc;
   inst_t str_not;
   inst_t str_pair;
+  inst_t str_prog;
   inst_t str_quote;
   inst_t str_read;
   inst_t str_readc;
