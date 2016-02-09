@@ -770,15 +770,15 @@ cm_obj_tostring(void)
     return;
   }
 
-  inst_t cl_name = CLASSVAL(inst_of(MC_ARG(0)))->name;
-  unsigned n = 1 + (STRVAL(cl_name)->size - 1) + 1 + 18 + 1 + 1;
-  char *buf = mem_alloc(n, false);
+  FRAME_WORK_BEGIN(1) {
+    inst_t cl_name = CLASSVAL(inst_of(MC_ARG(0)))->name;
+    unsigned n = 1 + (STRVAL(cl_name)->size - 1) + 1 + 18 + 1 + 1;
 
-  snprintf(buf, n, "<%s@%p>", STRVAL(cl_name)->data, MC_ARG(0));
+    str_alloc(&WORK(0), n);
+    snprintf(STRVAL(WORK(0))->data, STRVAL(WORK(0))->size, "<%s@%p>", STRVAL(cl_name)->data, MC_ARG(0));
 
-  str_newc(MC_RESULT, 1, strlen(buf), buf);
-
-  mem_free(buf, n);
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -1142,6 +1142,13 @@ str_free(inst_t inst, inst_t cl)
 }
 
 void
+str_alloc(inst_t *dst, unsigned size)
+{
+  inst_alloc(dst, consts.cl_str);
+  STRVAL(*dst)->data = (char *) mem_alloc(STRVAL(*dst)->size = size, false);
+}
+
+void
 str_newc(inst_t *dst, unsigned argc, ...)
 {
   FRAME_WORK_BEGIN(1) {
@@ -1160,12 +1167,11 @@ str_newc(inst_t *dst, unsigned argc, ...)
     
     va_end(ap);
     
-    inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len, false);
+    str_alloc(&WORK(0), len);
 
     va_start(ap, argc);
 
-    for (n = argc; n > 0; --n) {
+    for (s = STRVAL(WORK(0))->data, n = argc; n > 0; --n) {
       len = va_arg(ap, unsigned);
       memcpy(s, va_arg(ap, char *), len);
       s += len;
@@ -1191,10 +1197,9 @@ str_newv(inst_t *dst, unsigned n, inst_t *data)
     }
     ++len;
     
-    inst_alloc(&WORK(0), consts.cl_str);
-    STRVAL(WORK(0))->data = s = (char *) mem_alloc(STRVAL(WORK(0))->size = len, false);
+    str_alloc(&WORK(0), len);
 
-    for (p = data, k = n; k > 0; --k, ++p) {
+    for (s = STRVAL(WORK(0))->data, p = data, k = n; k > 0; --k, ++p) {
       len = STRVAL(*p)->size - 1;
       memcpy(s, STRVAL(*p)->data, len);
       s += len;
@@ -1449,19 +1454,19 @@ cm_str_toupper(void)
   if (MC_ARGC != 1)  error_argc();
   if (!is_kind_of(MC_ARG(0), consts.cl_str))  error_bad_arg(MC_ARG(0));
 
-  unsigned size = STRVAL(MC_ARG(0))->size;
-  char *buf     = mem_alloc(size, false);
-
-  char     *p, *q;
-  unsigned n;
-  for (p = buf, q = STRVAL(MC_ARG(0))->data, n = size - 1; n > 0; --n, ++p, ++q) {
-    *p = toupper(*q);
-  }
-  *p = 0;
-
-  inst_alloc(MC_RESULT, consts.cl_str);
-  STRVAL(*MC_RESULT)->size = size;
-  STRVAL(*MC_RESULT)->data = buf;
+  FRAME_WORK_BEGIN(1) {
+    unsigned size = STRVAL(MC_ARG(0))->size;
+    str_alloc(&WORK(0), size);
+  
+    char     *p, *q;
+    unsigned n;
+    for (p = STRVAL(WORK(0))->data, q = STRVAL(MC_ARG(0))->data, n = size - 1; n > 0; --n, ++p, ++q) {
+      *p = toupper(*q);
+    }
+    *p = 0;
+    
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -2317,23 +2322,39 @@ cm_file_new(void)
 void
 cm_file_read(void)
 {
-  enum { BUFSIZE = 512 };
-  struct tokbuf tb[1];
+  FRAME_WORK_BEGIN(2) {
+    FILE *fp = FILEVAL(MC_ARG(0))->fp;
 
-  tokbuf_init(tb);
+    str_alloc(&WORK(1), 512);
+    str_newc(&WORK(0), 1, 0, "");
+    while (fgets(STRVAL(WORK(1))->data, STRVAL(WORK(1))->size, fp) != 0) {
+      str_newc(&WORK(0), 2, STRVAL(WORK(0))->size - 1, STRVAL(WORK(0))->data,
+	                    strlen(STRVAL(WORK(1))->data), STRVAL(WORK(1))->data
+	       );
+    }
+    
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
+}
 
-  FILE *fp = FILEVAL(MC_ARG(0))->fp;
-  char *buf = mem_alloc(BUFSIZE, false);
+void
+cm_file_readln(void)
+{
+  FRAME_WORK_BEGIN(2) {
+    FILE *fp = FILEVAL(MC_ARG(0))->fp;
 
-  while (fgets(buf, BUFSIZE, fp) != 0) {
-    tokbuf_append(tb, strlen(buf), buf);
-  }
-
-  str_newc(MC_RESULT, 1, tb->len, tb->buf);
-
-  mem_free(buf, BUFSIZE);
-
-  tokbuf_fini(tb);
+    str_alloc(&WORK(1), 512);
+    str_newc(&WORK(0), 1, 0, "");
+    while (fgets(STRVAL(WORK(1))->data, STRVAL(WORK(1))->size, fp) != 0) {
+      unsigned n = strlen(STRVAL(WORK(1))->data);
+      str_newc(&WORK(0), 2, STRVAL(WORK(0))->size - 1, STRVAL(WORK(0))->data,
+	                    n, STRVAL(WORK(1))->data
+	       );
+      if (STRVAL(WORK(1))->data[n - 1] == '\n')  break;
+    }
+    
+    inst_assign(MC_RESULT, WORK(0));
+  } FRAME_WORK_END;
 }
 
 void
@@ -2921,6 +2942,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_quote,       "&quote" },
   { &consts.str_read,        "read" },
   { &consts.str_readc,       "read:" },
+  { &consts.str_readln,      "readln" },
   { &consts.str_sha1,        "sha1" },
   { &consts.str_size,        "size" },
   { &consts.str_string,      "#String" },
@@ -3049,8 +3071,9 @@ struct init_method init_method_tbl[] = {
 
   { &consts.cl_file, CLASSVAL_OFS(cl_methods), &consts.str_newc_modec, cm_file_new },
 
-  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_read, cm_file_read },
-  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load, cm_file_load },
+  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_read,   cm_file_read },
+  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_readln, cm_file_readln },
+  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load,   cm_file_load },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },

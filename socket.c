@@ -180,17 +180,17 @@ cm_socket_read(void)
   if (inst_of(MC_ARG(0)) != socket_consts.cl_socket)  error_bad_arg(MC_ARG(0));
   if (inst_of(MC_ARG(1)) != consts.cl_int)            error_bad_arg(MC_ARG(1));
 
-  unsigned n = INTVAL(MC_ARG(1));
-  char *buf = mem_alloc(n, false);
-  int rc = read(SOCKETVAL(MC_ARG(0))->fd, buf, n);
-  if (rc < 0) {
-    perror(0);
-    error(0);
-  }
-  
-  str_newc(MC_RESULT, 1, rc, buf);
-
-  mem_free(buf, n);
+  FRAME_WORK_BEGIN(1) {
+    unsigned n = INTVAL(MC_ARG(1));
+    str_alloc(&WORK(0), n);
+    int rc = read(SOCKETVAL(MC_ARG(0))->fd, STRVAL(WORK(0))->data, STRVAL(WORK(0))->size);
+    if (rc < 0) {
+      perror(0);
+      error(0);
+    }
+    
+    str_newc(MC_RESULT, 1, rc, STRVAL(WORK(0))->data);
+  } FRAME_WORK_END;
 }
 
 static void

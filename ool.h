@@ -126,6 +126,7 @@ struct inst_str {
   } val[1];
 };
 #define STRVAL(x)  (((struct inst_str *)(x))->val)
+void str_alloc(inst_t *dst, unsigned size);
 void str_newc(inst_t *dst, unsigned argc, ...);
 void str_newv(inst_t *dst, unsigned n, inst_t *data);
 
@@ -310,6 +311,7 @@ struct {
   inst_t str_quote;
   inst_t str_read;
   inst_t str_readc;
+  inst_t str_readln;
   inst_t str_sha1;
   inst_t str_size;
   inst_t str_string;

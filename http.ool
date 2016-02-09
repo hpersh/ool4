@@ -15,10 +15,14 @@
 	{(self url) [socket =! [[socket @ Socket] new: ([[socket @ Socket] AF_INET], [[socket @ Socket] SOCK_STREAM])]]
 		    [socket connect: ([self @ ipaddr], 80)]
 		    [socket write: ["`' join: ("`GET ' url "` HTTP/1.1\r\nHost: ' [self @ host] "`\r\n\r\n')]]
-                    [result =! "`']
-		    [[[[result imatch: "`</html>\n\n*$'] cdr] equal: 0] &while:
-                    	[result = ["`' join: (result [socket read: 512])]]
-	            ]
-		    result
-        }
+		    [result =! "`']
+		    [runf =! #true]
+		    [runf &while:
+			[{() [in =! [socket read: 512]]
+			     [result = ["`' join: (result in)]]
+			     [runf = [[[in imatch: "`</html>\n\n*$'] cdr] equal: 0]]
+			 } eval: ()
+			]
+		    ]
+	}
 ]
