@@ -335,10 +335,10 @@ inst_release(inst_t inst)
   if (--inst->ref_cnt == 0)  inst_free(inst);
 }
 
-void __attribute__((noreturn)) 
-frame_jmp(struct frame_jmp *fr, int code)
+void
+frames_unwind(struct frame *fr)
 {
-  while (oolvm->fp < fr->base) {
+  while (oolvm->fp != fr) {
     switch (oolvm->fp->type) {
     case FRAME_TYPE_WORK:
       frame_work_pop();
@@ -362,6 +362,12 @@ frame_jmp(struct frame_jmp *fr, int code)
       assert(0);
     }
   }
+}
+
+void __attribute__((noreturn)) 
+frame_jmp(struct frame_jmp *fr, int code)
+{
+  frames_unwind(fr->base);
 
   longjmp(fr->jmp_buf, code);
 }
