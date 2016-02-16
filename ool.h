@@ -425,9 +425,9 @@ enum {
   FRAME_TYPE_WORK,
   FRAME_TYPE_METHOD_CALL,
   FRAME_TYPE_MODULE,
-  FRAME_TYPE_ERROR,
   FRAME_TYPE_BLOCK,
   FRAME_TYPE_INPUT,
+  FRAME_TYPE_EXCEPT
 };
 
 struct frame {
@@ -464,11 +464,6 @@ struct frame_jmp {
 
 void frame_jmp(struct frame_jmp *fr, int code);
 
-struct frame_error {
-  struct frame_jmp   base[1];
-  struct frame_error *prev;
-};
-
 struct frame_block {
   struct frame_jmp   base[1];
   struct frame_block *prev;
@@ -483,14 +478,20 @@ struct frame_input {
   struct tokbuf      tb[1];
 };
 
+struct frame_except {
+  struct frame_jmp    base[1];
+  struct frame_except *prev;
+  inst_t              *arg;
+};
+
 struct {
   struct frame             *fp;
   struct frame_work        *wfp;
   struct frame_method_call *mcfp;
   struct frame_module      *modfp;
-  struct frame_error       *errfp;
   struct frame_block       *blkfp;
   struct frame_input       *inpfp;
+  struct frame_except      *exceptfp;
 } oolvm[1];
 
 static inline struct frame *
@@ -622,36 +623,6 @@ frame_module_pop(void)
   }
 
 static inline void
-frame_error_push(void)
-{
-  struct frame_error *fr = (struct frame_error *) frame_push(sizeof(*fr), FRAME_TYPE_ERROR);
-
-  fr->prev = oolvm->errfp;
-  oolvm->errfp = fr;
-}
-
-static inline void
-frame_error_pop(void)
-{
-  assert(oolvm->fp->type == FRAME_TYPE_ERROR);
-  assert(oolvm->errfp->base->base == oolvm->fp);
-
-  oolvm->errfp = oolvm->errfp->prev;
-  frame_pop(sizeof(struct frame_error));
-}
-
-#define FRAME_ERROR_BEGIN						\
-  {									\
-    frame_error_push();							\
-    oolvm->errfp->base->code = setjmp(oolvm->errfp->base->jmp_buf);
-
-#define FRAME_ERROR_CODE (oolvm->errfp->base->code)
-
-#define FRAME_ERROR_END	  \
-    frame_error_pop();	  \
-  }
-
-static inline void
 frame_block_push(inst_t dict)
 {
   struct frame_block *fr = (struct frame_block *) frame_push(sizeof(*fr), FRAME_TYPE_BLOCK);
@@ -711,6 +682,40 @@ frame_input_pop(void)
 
 #define FRAME_INPUT_END \
     frame_input_pop();	\
+  }
+
+
+
+
+static inline void
+frame_except_push(inst_t *arg)
+{
+  struct frame_except *fr = (struct frame_except *) frame_push(sizeof(*fr), FRAME_TYPE_EXCEPT);
+
+  fr->prev = oolvm->exceptfp;
+  fr->arg  = arg;
+  oolvm->exceptfp = fr;
+}
+
+static inline void
+frame_except_pop(void)
+{
+  assert(oolvm->fp->type == FRAME_TYPE_EXCEPT);
+  assert(oolvm->exceptfp->base->base == oolvm->fp);
+
+  oolvm->exceptfp = oolvm->exceptfp->prev;
+  frame_pop(sizeof(struct frame_except));
+}
+
+#define FRAME_EXCEPT_BEGIN(_arg)					\
+  {									\
+    frame_except_push((_arg));						\
+    oolvm->exceptfp->base->code = setjmp(oolvm->exceptfp->base->jmp_buf);
+
+#define FRAME_EXCEPT_CODE (oolvm->exceptfp->base->code)
+
+#define FRAME_EXCEPT_END	  \
+    frame_except_pop();		  \
   }
 
 void __attribute__((noreturn)) error(char *fmt, ...);

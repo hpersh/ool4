@@ -349,14 +349,14 @@ frames_unwind(struct frame *fr)
     case FRAME_TYPE_MODULE:
       frame_module_pop();
       break;
-    case FRAME_TYPE_ERROR:
-      frame_error_pop();
-      break;
     case FRAME_TYPE_INPUT:
       frame_input_pop();
       break;
     case FRAME_TYPE_BLOCK:
       frame_block_pop();
+      break;
+    case FRAME_TYPE_EXCEPT:
+      frame_except_pop();
       break;
     default:
       assert(0);
@@ -367,8 +367,6 @@ frames_unwind(struct frame *fr)
 void __attribute__((noreturn)) 
 frame_jmp(struct frame_jmp *fr, int code)
 {
-  frames_unwind(fr->base);
-
   longjmp(fr->jmp_buf, code);
 }
 
@@ -641,7 +639,7 @@ error_end(void)
 {
   --err_lvl;
 
-  frame_jmp(oolvm->errfp->base, 1);
+  frame_jmp(oolvm->exceptfp->base, 1);
 }
 
 void __attribute__((noreturn)) 
@@ -2752,6 +2750,45 @@ cm_metaclass_new(void)
   metaclass_new(MC_RESULT, MC_ARG(1), MC_ARG(2), MC_ARG(3));
 }
 
+void
+except_raise(inst_t arg)
+{
+  inst_assign(oolvm->exceptfp->arg, arg);
+
+  frame_jmp(oolvmp->exceptfp->base, 1);
+}
+
+void
+except_try(inst_t *dst, inst_t try, inst_t catch, inst_t finally)
+{
+  struct frame_except *e;
+  bool caughtf = false;
+
+  FRAME_WORK_BEGIN(2) {
+    FRAME_EXCEPT_BEGIN(&WORK(1)) {
+      if (setjmp(oolvm->exceptfp->base->jmp_buf) == 0) {
+	e = oolvm->exceptfp;
+	inst_method_call(&WORK(0), consts.str_eval, 1, &try);
+      } else {
+	caughtf = true;
+	oolvm->exceptfp = e->prev;
+	inst_assign(&WORK(0), catch);
+	inst_method_call(&WORK(0), consts.str_evalc, 2, &WORK(0));
+	frames_unwind(e->base->base);
+      }
+    } FRAME_EXCEPT_END;
+
+    if (!caughtf)  inst_method_call(&WORK(0), consts.str_eval, 1, &finally);
+
+    inst_assign(dst, WORK(0));
+  } FRAME_WORK_END;
+}
+
+void
+cm_except_raise(void)
+{
+}
+
 inst_t *
 env_find(inst_t var)
 {
@@ -3316,7 +3353,7 @@ void
 intr_catch(void)
 {
   putchar('\n');
-  frame_jmp(oolvm->errfp->base, 1);
+  frame_jmp(oolvm->exceptfp->base, 1);
 }
 
 int
@@ -3358,9 +3395,9 @@ main(int argc, char **argv)
   FRAME_MODULE_BEGIN(consts.module_main, consts.module_main) {
     FRAME_WORK_BEGIN(1) {
       FRAME_INPUT_BEGIN(filename, str->base) {
-	FRAME_ERROR_BEGIN {
-	  if (interactf || FRAME_ERROR_CODE == 0)  rep(&WORK(0), interactf);
-	} FRAME_ERROR_END;
+	FRAME_EXCEPT_BEGIN(0) {
+	  if (interactf || FRAME_EXCEPT_CODE == 0)  rep(&WORK(0), interactf);
+	} FRAME_EXCEPT_END;
       } FRAME_INPUT_END;
     } FRAME_WORK_END;
   } FRAME_MODULE_END;
