@@ -2,6 +2,7 @@
 #include <string.h>
 #include <setjmp.h>
 #include <stdio.h>
+#include <assert.h>
 
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof((a)[0]))
 
@@ -519,6 +520,9 @@ frame_work_push(struct frame_work *fr, unsigned size, inst_t *data)
 static inline void
 frame_work_pop(void)
 {
+  assert(oolvm->fp->type == FRAME_TYPE_WORK);
+  assert(oolvm->wfp->base == oolvm->fp);
+
   inst_t   *p;
   unsigned n;
   
@@ -558,6 +562,9 @@ frame_method_call_push(struct frame_method_call *fr, inst_t *result, inst_t cl, 
 static inline void
 frame_method_call_pop(void)
 {
+  assert(oolvm->fp->type == FRAME_TYPE_METHOD_CALL);
+  assert(oolvm->mcfp->base == oolvm->fp);
+
   oolvm->mcfp = oolvm->mcfp->prev;
   frame_pop();
 }
@@ -591,6 +598,9 @@ frame_module_push(struct frame_module *fr, inst_t cur, inst_t ctxt)
 static inline void
 frame_module_pop(void)
 {
+  assert(oolvm->fp->type == FRAME_TYPE_MODULE);
+  assert(oolvm->modfp->base == oolvm->fp);
+
   oolvm->modfp = oolvm->modfp->prev;
 
   frame_pop();
@@ -619,6 +629,9 @@ frame_error_push(struct frame_error *fr)
 static inline void
 frame_error_pop(void)
 {
+  assert(oolvm->fp->type == FRAME_TYPE_ERROR);
+  assert(oolvm->errfp->base->base == oolvm->fp);
+
   oolvm->errfp = oolvm->errfp->prev;
   frame_pop();
 }
@@ -647,6 +660,9 @@ frame_block_push(struct frame_block *fr, inst_t dict)
 static inline void
 frame_block_pop(void)
 {
+  assert(oolvm->fp->type == FRAME_TYPE_BLOCK);
+  assert(oolvm->blkfp->base->base == oolvm->fp);
+
   oolvm->blkfp = oolvm->blkfp->prev;
   frame_pop();
 }
@@ -677,6 +693,9 @@ frame_input_push(struct frame_input *fr, char *filename, struct stream *str)
 static inline void
 frame_input_pop(void)
 {
+  assert(oolvm->fp->type == FRAME_TYPE_INPUT);
+  assert(oolvm->inpfp->base->base == oolvm->fp);
+
   tokbuf_fini(oolvm->inpfp->tb);
 
   oolvm->inpfp = oolvm->inpfp->prev;

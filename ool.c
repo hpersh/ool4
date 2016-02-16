@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <signal.h>
-#include <assert.h>
 
 #include "ool.h"
 
