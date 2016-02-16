@@ -71,6 +71,8 @@ enum {
 
 void *mem_alloc(unsigned size, bool clr);
 void mem_free(void *p, unsigned size);
+void *mem_frame_alloc(unsigned size);
+void mem_frame_free(unsigned size);
 
 struct inst;
 typedef struct inst *inst_t;
@@ -491,25 +493,29 @@ struct {
   struct frame_input       *inpfp;
 } oolvm[1];
 
-static inline void
-frame_push(struct frame *fr, unsigned type)
+static inline struct frame *
+frame_push(unsigned size, unsigned type)
 {
+  struct frame *fr = mem_frame_alloc(size);
+
   fr->prev = oolvm->fp;
   fr->type = type;
 
-  oolvm->fp = fr;
+  return (oolvm->fp = fr);
 }
 
 static inline void
-frame_pop(void)
+frame_pop(unsigned size)
 {
   oolvm->fp = oolvm->fp->prev;
+
+  mem_frame_free(size);
 }
 
 static inline void
-frame_work_push(struct frame_work *fr, unsigned size, inst_t *data)
+frame_work_push(unsigned size, inst_t *data)
 {
-  frame_push(fr->base, FRAME_TYPE_WORK);
+  struct frame_work *fr = (struct frame_work *) frame_push(sizeof(*fr), FRAME_TYPE_WORK);
 
   fr->prev = oolvm->wfp;
   memset(fr->data = data, 0, (fr->size = size) * sizeof(fr->data[0]));
@@ -529,14 +535,13 @@ frame_work_pop(void)
   for (p = oolvm->wfp->data, n = oolvm->wfp->size; n > 0; --n, ++p)  inst_release(*p);
 
   oolvm->wfp = oolvm->wfp->prev;
-  frame_pop();
+  frame_pop(sizeof(struct frame_work));
 }
 
-#define FRAME_WORK_BEGIN(n)				\
-  {							\
-    inst_t __frame_work_data[n];			\
-    struct frame_work __frame_work[1];			\
-    frame_work_push(__frame_work, (n), __frame_work_data);
+#define FRAME_WORK_BEGIN(_size)			\
+  {						\
+    inst_t __frame_work_data[_size];		\
+    frame_work_push((_size), __frame_work_data);
 
 #define WORK(i)  (__frame_work_data[i])
 
@@ -545,9 +550,9 @@ frame_work_pop(void)
   }
 
 static inline void
-frame_method_call_push(struct frame_method_call *fr, inst_t *result, inst_t cl, inst_t sel, unsigned argc, inst_t *argv)
+frame_method_call_push(inst_t *result, inst_t cl, inst_t sel, unsigned argc, inst_t *argv)
 {
-  frame_push(fr->base, FRAME_TYPE_METHOD_CALL);
+  struct frame_method_call *fr = (struct frame_method_call *) frame_push(sizeof(*fr), FRAME_TYPE_METHOD_CALL);
 
   fr->prev   = oolvm->mcfp;
   fr->result = result;
@@ -566,13 +571,12 @@ frame_method_call_pop(void)
   assert(oolvm->mcfp->base == oolvm->fp);
 
   oolvm->mcfp = oolvm->mcfp->prev;
-  frame_pop();
+  frame_pop(sizeof(struct frame_method_call));
 }
 
 #define FRAME_METHOD_CALL_BEGIN(_rslt, _cl, _sel, _argc, _argv)		\
   {									\
-    struct frame_method_call __fr[1];					\
-    frame_method_call_push(__fr, (_rslt), (_cl), (_sel), (_argc), (_argv));
+    frame_method_call_push((_rslt), (_cl), (_sel), (_argc), (_argv));
 
 #define MC_RESULT  (oolvm->mcfp->result)
 #define MC_ARGC    (oolvm->mcfp->argc)
@@ -584,9 +588,9 @@ frame_method_call_pop(void)
   }
 
 static inline void
-frame_module_push(struct frame_module *fr, inst_t cur, inst_t ctxt)
+frame_module_push(inst_t cur, inst_t ctxt)
 {
-  frame_push(fr->base, FRAME_TYPE_MODULE);
+  struct frame_module *fr = (struct frame_module *) frame_push(sizeof(*fr), FRAME_TYPE_MODULE);
 
   fr->prev = oolvm->modfp;
   fr->cur  = cur;
@@ -603,13 +607,12 @@ frame_module_pop(void)
 
   oolvm->modfp = oolvm->modfp->prev;
 
-  frame_pop();
+  frame_pop(sizeof(struct frame_module));
 }
 
 #define FRAME_MODULE_BEGIN(_cur, _ctxt)		\
   {						\
-    struct frame_module __fr[1];		\
-    frame_module_push(__fr, (_cur), (_ctxt));
+    frame_module_push((_cur), (_ctxt));
 
 #define MODULE_CUR   (oolvm->modfp->cur)
 #define MODULE_CTXT  (oolvm->modfp->ctxt)
@@ -619,9 +622,10 @@ frame_module_pop(void)
   }
 
 static inline void
-frame_error_push(struct frame_error *fr)
+frame_error_push(void)
 {
-  frame_push(fr->base->base, FRAME_TYPE_ERROR);
+  struct frame_error *fr = (struct frame_error *) frame_push(sizeof(*fr), FRAME_TYPE_ERROR);
+
   fr->prev = oolvm->errfp;
   oolvm->errfp = fr;
 }
@@ -633,25 +637,25 @@ frame_error_pop(void)
   assert(oolvm->errfp->base->base == oolvm->fp);
 
   oolvm->errfp = oolvm->errfp->prev;
-  frame_pop();
+  frame_pop(sizeof(struct frame_error));
 }
 
-#define FRAME_ERROR_BEGIN					\
-  {								\
-    struct frame_error __frame_error[1];			\
-    frame_error_push(__frame_error);				\
-    __frame_error->base->code = setjmp(__frame_error->base->jmp_buf);
+#define FRAME_ERROR_BEGIN						\
+  {									\
+    frame_error_push();							\
+    oolvm->errfp->base->code = setjmp(oolvm->errfp->base->jmp_buf);
 
-#define FRAME_ERROR_CODE (__frame_error->base->code)
+#define FRAME_ERROR_CODE (oolvm->errfp->base->code)
 
 #define FRAME_ERROR_END	  \
     frame_error_pop();	  \
   }
 
 static inline void
-frame_block_push(struct frame_block *fr, inst_t dict)
+frame_block_push(inst_t dict)
 {
-  frame_push(fr->base->base, FRAME_TYPE_BLOCK);
+  struct frame_block *fr = (struct frame_block *) frame_push(sizeof(*fr), FRAME_TYPE_BLOCK);
+
   fr->prev = oolvm->blkfp;
   fr->dict = dict;
   oolvm->blkfp = fr;
@@ -664,23 +668,22 @@ frame_block_pop(void)
   assert(oolvm->blkfp->base->base == oolvm->fp);
 
   oolvm->blkfp = oolvm->blkfp->prev;
-  frame_pop();
+  frame_pop(sizeof(struct frame_block));
 }
 
 #define FRAME_BLOCK_BEGIN(dict)						\
   {									\
-    struct frame_block __frame_block[1];				\
-    frame_block_push(__frame_block, (dict));				\
-    __frame_block->base->code = setjmp(__frame_block->base->jmp_buf);
+    frame_block_push((dict));						\
+    oolvm->blkfp->base->code = setjmp(oolvm->blkfp->base->jmp_buf);
 
 #define FRAME_BLOCK_END \
     frame_block_pop();	\
   }
 
 static inline void
-frame_input_push(struct frame_input *fr, char *filename, struct stream *str)
+frame_input_push(char *filename, struct stream *str)
 {
-  frame_push(fr->base->base, FRAME_TYPE_INPUT);
+  struct frame_input *fr = (struct frame_input *)  frame_push(sizeof(*fr), FRAME_TYPE_INPUT);
 
   fr->filename = filename;
   fr->str      = str;
@@ -699,13 +702,12 @@ frame_input_pop(void)
   tokbuf_fini(oolvm->inpfp->tb);
 
   oolvm->inpfp = oolvm->inpfp->prev;
-  frame_pop();
+  frame_pop(sizeof(struct frame_input));
 }
 
 #define FRAME_INPUT_BEGIN(_file, _str)			\
   {							\
-    struct frame_input __frame_input[1];		\
-    frame_input_push(__frame_input, (_file), (_str));
+    frame_input_push((_file), (_str));
 
 #define FRAME_INPUT_END \
     frame_input_pop();	\

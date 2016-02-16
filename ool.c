@@ -41,7 +41,7 @@ enum {
   MAX_BLK_SIZE       = 1 << MAX_BLK_SIZE_LOG2
 };
 
-struct mem_page {
+struct mem_blk_page {
   unsigned blks_in_use;
 };
 
@@ -125,10 +125,10 @@ blk_size_align(unsigned size)
   return (bi);
 }
 
-static inline struct mem_page *
+static inline struct mem_blk_page *
 blk_to_page(void *p)
 {
-  return ((struct mem_page *) (PTR_TO_UINT(p) & ~(MEM_PAGE_SIZE - 1)));
+  return ((struct mem_blk_page *) (PTR_TO_UINT(p) & ~(MEM_PAGE_SIZE - 1)));
 }
 
 void
@@ -193,7 +193,7 @@ mem_alloc(unsigned size, bool clr)
   struct mem_blk_info *bi = blk_size_align(size);
 
   if (list_empty(bi->free_list)) {
-    struct mem_page *page = mem_pages_alloc(1);    
+    struct mem_blk_page *page = mem_pages_alloc(1);    
     page->blks_in_use = 0;
     
     unsigned char *r = (unsigned char *)(page + 1);
@@ -233,7 +233,7 @@ mem_free(void *p, unsigned size)
 
   list_insert(q->list_node, list_first(bi->free_list));
 
-  struct mem_page *page = blk_to_page(q);
+  struct mem_blk_page *page = blk_to_page(q);
 
   if (--page->blks_in_use > 0)  return;
 
@@ -246,6 +246,48 @@ mem_free(void *p, unsigned size)
   }
 
   mem_pages_free(page, 1);
+}
+
+struct mem_frame_page {
+  struct mem_frame_page *prev;
+  unsigned              in_use;
+};
+
+struct mem_frame_page *mem_frame_page_last;
+
+void *
+mem_frame_alloc(unsigned size)
+{
+  struct mem_frame_page *page = mem_frame_page_last;
+
+  if (page == 0 || (page->in_use + size) > MEM_PAGE_SIZE) {
+    page = (struct mem_frame_page *) mem_pages_alloc(1);
+    page->in_use = sizeof(*page);
+    page->prev = mem_frame_page_last;
+    mem_frame_page_last = page;
+  }
+
+  void *result = (unsigned char *) page + page->in_use;
+  page->in_use += size;
+
+  return (result);
+}
+
+void
+mem_frame_free(unsigned size)
+{
+  struct mem_frame_page *page = mem_frame_page_last;
+
+  page->in_use -= size;
+  if (page->in_use > sizeof(*page))  return;
+  if (page->in_use == sizeof(*page)) {
+    mem_frame_page_last = page->prev;
+    mem_pages_free(page, 1);
+
+    return;
+  }
+
+  assert(0);
 }
 
 unsigned
