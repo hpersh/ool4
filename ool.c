@@ -666,7 +666,7 @@ error(char *fmt, ...)
 void __attribute__((noreturn)) 
 error_argc(void)
 {
-  error("Incorrect number of arguments\n");
+  except_raise(consts.str___ool_exception_argument_count, 0);
 }
 
 void __attribute__((noreturn)) 
@@ -3084,8 +3084,12 @@ struct init_cl init_cl_tbl[] = {
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
 };
 
+#define DEFSTR(s) \
+  { &consts.str_ ## s, #s }
+
 struct init_str init_str_tbl[] = {
   { &consts.str___ool_exception_cannot_instantiate, "__ool_exception_cannot_instantiate" },
+  DEFSTR(__ool_exception_argument_count),
   { &consts.str_addc,        "add:" },
   { &consts.str_aandc,       "&and:" },
   { &consts.str_andc,        "and:" },

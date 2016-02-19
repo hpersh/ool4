@@ -262,6 +262,7 @@ struct {
   inst_t cl_system;
   
   inst_t str___ool_exception_cannot_instantiate;
+  inst_t str___ool_exception_argument_count;
   inst_t str_addc;
   inst_t str_aandc;
   inst_t str_andc;
