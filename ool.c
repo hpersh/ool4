@@ -2493,6 +2493,14 @@ cm_file_readln(void)
 }
 
 void
+cm_file_write(void)
+{
+  fputs(STRVAL(MC_ARG(1))->data, FILEVAL(MC_ARG(0))->fp);
+
+  inst_assign(MC_RESULT, MC_ARG(0));
+}
+
+void
 rep(inst_t *dst, bool interactf)
 {
   FRAME_WORK_BEGIN(1) {
@@ -2854,9 +2862,12 @@ except_try(inst_t *dst, inst_t try, inst_t catch, inst_t finally)
 	} FRAME_WORK_END;
 	
 	frames_unwind(e->base->base);
+	frame_pop(sizeof(struct frame_except));
+	goto done;
       }
     } FRAME_EXCEPT_END;
 
+  done:
     if (!caughtf)  inst_method_call(&WORK(0), consts.str_eval, 1, &finally);
 
     inst_assign(dst, WORK(0));
@@ -3169,6 +3180,7 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_atc_putc,    cm_obj_atput },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_instance_of, cm_obj_inst_of },
   { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_aandc,       cm_obj_and },
+  { &consts.cl_object, CLASSVAL_OFS(inst_methods), &consts.str_tryc_catchc_finallyc, cm_except_try },
 
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_andc,     cm_bool_and },
   { &consts.cl_bool, CLASSVAL_OFS(inst_methods), &consts.str_not,      cm_bool_not },
@@ -3265,8 +3277,8 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_read,   cm_file_read },
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_readln, cm_file_readln },
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load,   cm_file_load },
+  { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_writec, cm_file_write },
 
-  { &consts.cl_except, CLASSVAL_OFS(cl_methods), &consts.str_tryc_catchc_finallyc, cm_except_try },
   { &consts.cl_except, CLASSVAL_OFS(cl_methods), &consts.str_raisec,               cm_except_raise },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
