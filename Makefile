@@ -1,7 +1,7 @@
 CC_CLANG	= clang
 CC_GCC		= gcc
 
-CFLAGS_ALL	= -Wall -Wno-logical-op-parentheses
+#CFLAGS_ALL	= -Wall -Wno-logical-op-parentheses
 CFLAGS_SHARED	= -fPIC
 CFLAGS_DEBUG	= -g
 CFLAGS_PROFILE	= -pg -O3 -DNDEBUG

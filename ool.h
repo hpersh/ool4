@@ -422,6 +422,7 @@ void tokbuf_append_char(struct tokbuf *tb, char c);
 bool parse(inst_t *dst);
 
 enum {
+  FRAME_TYPE_SCRATCH = 0xaa55ff01,
   FRAME_TYPE_WORK,
   FRAME_TYPE_METHOD_CALL,
   FRAME_TYPE_MODULE,
@@ -439,7 +440,7 @@ struct frame_work {
   struct frame      base[1];
   struct frame_work *prev;
   unsigned          size;
-  inst_t            *data;
+  inst_t            data[0];
 };
 
 struct frame_method_call {
@@ -513,13 +514,27 @@ frame_pop(unsigned size)
   mem_frame_free(size);
 }
 
-static inline void
-frame_work_push(unsigned size, inst_t *data)
+static inline unsigned char *
+frame_scratch_push(unsigned size)
 {
-  struct frame_work *fr = (struct frame_work *) frame_push(sizeof(*fr), FRAME_TYPE_WORK);
+  return ((unsigned char *) frame_push(sizeof(struct frame) + size, FRAME_TYPE_SCRATCH) + sizeof(struct frame));
+}
+
+static inline void
+frame_scratch_pop(unsigned size)
+{
+  assert(oolvm->fp->type == FRAME_TYPE_SCRATCH);
+
+  frame_pop(sizeof(struct frame) + size);
+}
+
+static inline void
+frame_work_push(unsigned size)
+{
+  struct frame_work *fr = (struct frame_work *) frame_push(sizeof(*fr) + size * sizeof(fr->data[0]), FRAME_TYPE_WORK);
 
   fr->prev = oolvm->wfp;
-  memset(fr->data = data, 0, (fr->size = size) * sizeof(fr->data[0]));
+  memset(fr->data, 0, (fr->size = size) * sizeof(fr->data[0]));
 
   oolvm->wfp = fr;
 }
@@ -531,20 +546,19 @@ frame_work_pop(void)
   assert(oolvm->wfp->base == oolvm->fp);
 
   inst_t   *p;
-  unsigned n;
+  unsigned size = oolvm->wfp->size, n;
   
-  for (p = oolvm->wfp->data, n = oolvm->wfp->size; n > 0; --n, ++p)  inst_release(*p);
+  for (p = oolvm->wfp->data, n = size; n > 0; --n, ++p)  inst_release(*p);
 
   oolvm->wfp = oolvm->wfp->prev;
-  frame_pop(sizeof(struct frame_work));
+  frame_pop(sizeof(struct frame_work) + size * sizeof(oolvm->wfp->data[0]));
 }
 
 #define FRAME_WORK_BEGIN(_size)			\
   {						\
-    inst_t __frame_work_data[_size];		\
-    frame_work_push((_size), __frame_work_data);
+    frame_work_push((_size));
 
-#define WORK(i)  (__frame_work_data[i])
+#define WORK(i)  (oolvm->wfp->data[i])
 
 #define FRAME_WORK_END	 \
     frame_work_pop();    \

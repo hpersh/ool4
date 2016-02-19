@@ -634,12 +634,14 @@ error_begin(void)
   abort();
 }
 
+void __attribute__((noreturn)) except_raise(inst_t arg);
+
 static inline void __attribute__((noreturn)) 
 error_end(void)
 {
   --err_lvl;
 
-  frame_jmp(oolvm->exceptfp->base, 1);
+  except_raise(0);
 }
 
 void __attribute__((noreturn)) 
@@ -654,8 +656,6 @@ error(char *fmt, ...)
   if (fmt != 0)  vfprintf(stderr, fmt, ap);
 
   va_end(ap);
-
-  backtrace();
 
   error_end();
 }
@@ -677,8 +677,6 @@ error_bad_arg(inst_t arg)
     inst_method_call(&WORK(0), consts.str__write, 1, &arg);
     fprintf(stderr, "%s\n", STRVAL(WORK(0))->data);
   } FRAME_WORK_END;
-
-  backtrace();
 
   error_end();
 }
@@ -2750,18 +2748,18 @@ cm_metaclass_new(void)
   metaclass_new(MC_RESULT, MC_ARG(1), MC_ARG(2), MC_ARG(3));
 }
 
-void
+void __attribute__((noreturn)) 
 except_raise(inst_t arg)
 {
   inst_assign(oolvm->exceptfp->arg, arg);
 
-  frame_jmp(oolvmp->exceptfp->base, 1);
+  frame_jmp(oolvm->exceptfp->base, 1);
 }
 
 void
 except_try(inst_t *dst, inst_t try, inst_t catch, inst_t finally)
 {
-  struct frame_except *e;
+  struct frame_except *e = 0;
   bool caughtf = false;
 
   FRAME_WORK_BEGIN(2) {
@@ -2772,8 +2770,12 @@ except_try(inst_t *dst, inst_t try, inst_t catch, inst_t finally)
       } else {
 	caughtf = true;
 	oolvm->exceptfp = e->prev;
-	inst_assign(&WORK(0), catch);
-	inst_method_call(&WORK(0), consts.str_evalc, 2, &WORK(0));
+	FRAME_WORK_BEGIN(2) {
+	  inst_assign(&WORK(0), catch);
+	  inst_assign(&WORK(1), *e->arg);
+	  inst_method_call(&WORK(0), consts.str_evalc, 2, &WORK(0));
+	} FRAME_WORK_END;
+	
 	frames_unwind(e->base->base);
       }
     } FRAME_EXCEPT_END;
@@ -3393,10 +3395,23 @@ main(int argc, char **argv)
   stream_file_init(str, fpin);
 
   FRAME_MODULE_BEGIN(consts.module_main, consts.module_main) {
-    FRAME_WORK_BEGIN(1) {
+    FRAME_WORK_BEGIN(2) {
       FRAME_INPUT_BEGIN(filename, str->base) {
-	FRAME_EXCEPT_BEGIN(0) {
-	  if (interactf || FRAME_EXCEPT_CODE == 0)  rep(&WORK(0), interactf);
+	struct frame_except *e;
+	
+	FRAME_EXCEPT_BEGIN(&WORK(1)) {
+	  if (setjmp(oolvm->exceptfp->base->jmp_buf) == 0) {
+	    e = oolvm->exceptfp;
+	  again:
+	    rep(&WORK(0), interactf);
+	  } else {
+	    fprintf(stderr, "Uncaught exception\n");
+	    backtrace();
+	    
+	    frames_unwind(e->base->base);
+
+	    if (interactf)  goto again;
+	  }
 	} FRAME_EXCEPT_END;
       } FRAME_INPUT_END;
     } FRAME_WORK_END;
@@ -3408,3 +3423,17 @@ main(int argc, char **argv)
 
   return (0);
 }
+
+#ifndef NDEBUG
+
+void
+frames_dump(void)
+{
+  struct frame *p;
+
+  for (p = oolvm->fp; p != 0; p = p->prev) {
+    printf("fp=%p type=0x%x prev=%p\n", p, p->type, p->prev);
+  }
+}
+
+#endif
