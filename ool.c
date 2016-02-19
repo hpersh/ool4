@@ -2432,21 +2432,64 @@ cm_file_read(void)
 void
 cm_file_readln(void)
 {
-  FRAME_WORK_BEGIN(2) {
-    FILE *fp = FILEVAL(MC_ARG(0))->fp;
+  FILE *fp = FILEVAL(MC_ARG(0))->fp;
+  int  fd = fileno(fp);
+  struct frame *old = oolvm->fp;
+  struct clist *cl = (struct clist *) frame_scratch_push(sizeof(struct clist)), *p;
+  unsigned size;
 
-    str_alloc(&WORK(1), 512);
-    str_newc(&WORK(0), 1, 0, "");
-    while (fgets(STRVAL(WORK(1))->data, STRVAL(WORK(1))->size, fp) != 0) {
-      unsigned n = strlen(STRVAL(WORK(1))->data);
-      str_newc(&WORK(0), 2, STRVAL(WORK(0))->size - 1, STRVAL(WORK(0))->data,
-	                    n, STRVAL(WORK(1))->data
-	       );
-      if (STRVAL(WORK(1))->data[n - 1] == '\n')  break;
+  if (lseek(fd, 0, SEEK_END) == 0) {
+    lseek(fd, 0, SEEK_SET);
+
+    for (size = 0, p = cl; ; p = p->next) {
+      int n = read(fd, p->data, sizeof(p->data));
+      if (n < 0) {
+	perror(0);
+	error(0);
+      }
+      
+      char *q;
+      unsigned k;
+      for (q = p->data, k = 0; k < n && *q != '\n'; ++q, ++k);
+      if (k < n) {
+	++k;
+	size += k;
+	lseek(fd, -(int)(n - k), SEEK_CUR);
+	break;
+      }    
+      
+      size += n;
+      if (n < sizeof(p->data))  break;
+      
+      p->next = (struct clist *) frame_scratch_push(sizeof(struct clist));
     }
-    
-    inst_assign(MC_RESULT, WORK(0));
-  } FRAME_WORK_END;
+  } else {
+    for (size = 0, p = cl; ; p = p->next) {
+      char     *q;
+      unsigned k;
+      int      n;
+
+      for (q = p->data, k = sizeof(p->data); k > 0; --k, ++q) {
+	n = read(fd, q, 1);
+
+	if (n < 0) {
+	  perror(0);
+	  error(0);
+	}
+	if (n == 0)  break;
+	++size;
+	if (*q == '\n')  break;
+      }
+
+      if (n == 0 || *q == '\n')  break;
+
+      p->next = (struct clist *) frame_scratch_push(sizeof(struct clist));      
+    }
+  }
+
+  str_newcl(MC_RESULT, size, cl);
+
+  frames_unwind(old);
 }
 
 void
