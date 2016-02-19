@@ -260,6 +260,8 @@ mem_frame_alloc(unsigned size)
 {
   struct mem_frame_page *page = mem_frame_page_last;
 
+  assert(size <= (MEM_PAGE_SIZE - sizeof(*page)));
+
   if (page == 0 || (page->in_use + size) > MEM_PAGE_SIZE) {
     page = (struct mem_frame_page *) mem_pages_alloc(1);
     page->in_use = sizeof(*page);
@@ -1254,6 +1256,28 @@ str_newv(inst_t *dst, unsigned n, inst_t *data)
 
     inst_assign(dst, WORK(0));
   } FRAME_WORK_END;
+}
+
+static inline unsigned
+min(unsigned a, unsigned b)
+{
+  return (a < b ? a : b);
+}
+
+void
+str_newcl(inst_t *dst, unsigned size, struct clist *cl)
+{
+  str_alloc(dst, size + 1);
+
+  char *p;
+
+  for (p = STRVAL(*dst)->data; size > 0; cl = cl->next) {
+    unsigned n = min(size, sizeof(cl->data));
+    memcpy(p, cl->data, n);
+    p += n;
+    size -= n;
+  }
+  *p = 0;
 }
 
 unsigned
@@ -2383,19 +2407,26 @@ cm_file_new(void)
 void
 cm_file_read(void)
 {
-  FRAME_WORK_BEGIN(2) {
-    FILE *fp = FILEVAL(MC_ARG(0))->fp;
+  FILE *fp = FILEVAL(MC_ARG(0))->fp;
+  struct frame *old = oolvm->fp;
+  struct clist *cl = (struct clist *) frame_scratch_push(sizeof(struct clist)), *p;
+  unsigned size;
 
-    str_alloc(&WORK(1), 512);
-    str_newc(&WORK(0), 1, 0, "");
-    while (fgets(STRVAL(WORK(1))->data, STRVAL(WORK(1))->size, fp) != 0) {
-      str_newc(&WORK(0), 2, STRVAL(WORK(0))->size - 1, STRVAL(WORK(0))->data,
-	                    strlen(STRVAL(WORK(1))->data), STRVAL(WORK(1))->data
-	       );
+  for (size = 0, p = cl; ; p = p->next) {
+    int n = read(fileno(fp), p->data, sizeof(p->data));
+    if (n < 0) {
+      perror(0);
+      error(0);
     }
-    
-    inst_assign(MC_RESULT, WORK(0));
-  } FRAME_WORK_END;
+    size += n;
+    if (n < sizeof(p->data))  break;
+
+    p->next = (struct clist *) frame_scratch_push(sizeof(struct clist));
+  }
+
+  str_newcl(MC_RESULT, size, cl);
+
+  frames_unwind(old);
 }
 
 void

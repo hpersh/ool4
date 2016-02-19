@@ -34,31 +34,31 @@ list_empty(struct list *li)
 static inline struct list *
 list_first(struct list *li)
 {
-  return(li->next);
+  return (li->next);
 }
 
 static inline struct list *
 list_last(struct list *li)
 {
-  return(li->prev);
+  return (li->prev);
 }
 
 static inline struct list *
 list_end(struct list *li)
 {
-  return(li);
+  return (li);
 }
 
 static inline struct list *
 list_prev(struct list *item)
 {
-  return(item->prev);
+  return (item->prev);
 }
 
 static inline struct list *
 list_next(struct list *item)
 {
-  return(item->next);
+  return (item->next);
 }
 
 struct list *list_insert(struct list *item, struct list *before);
@@ -68,7 +68,6 @@ enum { CLIST_DATA_SIZE = 512 };
 
 struct clist {
   struct clist *next;
-  unsigned     size;
   char         data[CLIST_DATA_SIZE];
 };
 
@@ -535,6 +534,8 @@ frame_scratch_push(unsigned size)
   size = ((size - 1) & ~3) + 4;
 
   struct frame_scratch *fr = (struct frame_scratch *) frame_push(sizeof(struct frame_scratch) + size, FRAME_TYPE_SCRATCH);
+
+  fr->size = size;
 
   return ((unsigned char *)(fr + 1));
 }
