@@ -257,6 +257,7 @@ struct {
   inst_t cl_dict;
   inst_t cl_file;
   inst_t cl_module;
+  inst_t cl_except;
   inst_t cl_env;
   inst_t cl_system;
   
@@ -286,6 +287,7 @@ struct {
   inst_t str_equalc;
   inst_t str_eval;
   inst_t str_evalc;
+  inst_t str_exception;
   inst_t str_exit;
   inst_t str_exitc;
   inst_t str_false;
@@ -321,6 +323,7 @@ struct {
   inst_t str_pair;
   inst_t str_prog;
   inst_t str_quote;
+  inst_t str_raisec;
   inst_t str_read;
   inst_t str_readc;
   inst_t str_readln;
@@ -331,6 +334,7 @@ struct {
   inst_t str_tostring;
   inst_t str_toupper;
   inst_t str_true;
+  inst_t str_tryc_catchc_finallyc;
   inst_t str_whilec;
   inst_t str__write;
   inst_t str_write;

@@ -2866,6 +2866,13 @@ except_try(inst_t *dst, inst_t try, inst_t catch, inst_t finally)
 void
 cm_except_raise(void)
 {
+  except_raise(MC_ARG(1));
+}
+
+void
+cm_except_try(void)
+{
+  except_try(MC_RESULT, MC_ARG(1), MC_ARG(2), MC_ARG(3));
 }
 
 inst_t *
@@ -3053,6 +3060,7 @@ struct init_cl init_cl_tbl[] = {
   { &consts.cl_dict,        &consts.str_dictionary,  &consts.cl_array,  sizeof(struct inst_set),         dict_init,        inst_walk_parent, inst_free_parent },
   { &consts.cl_file,        &consts.str_file,        &consts.cl_object, sizeof(struct inst_file),        file_init,        file_walk,        file_free,        file_cl_init },
   { &consts.cl_module,      &consts.str_module,      &consts.cl_dict,   sizeof(struct inst_module),      module_init,      module_walk,      module_free,      module_cl_init },
+  { &consts.cl_except,      &consts.str_exception,   &consts.cl_object, sizeof(struct inst) },
   { &consts.cl_env,         &consts.str_environment, &consts.cl_object, sizeof(struct inst) },
   { &consts.cl_system,      &consts.str_system,      &consts.cl_object, sizeof(struct inst) }
 };
@@ -3084,6 +3092,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_equalc,      "equal:" },
   { &consts.str_eval,        "eval" },
   { &consts.str_evalc,       "eval:" },
+  { &consts.str_exception,   "#Exception" },
   { &consts.str_exit,        "exit" },
   { &consts.str_exitc,       "exit:" },
   { &consts.str_false,       "#false" },
@@ -3119,6 +3128,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_pair,        "#Pair" },
   { &consts.str_prog,        "&prog" },
   { &consts.str_quote,       "&quote" },
+  { &consts.str_raisec,      "raise:" },
   { &consts.str_read,        "read" },
   { &consts.str_readc,       "read:" },
   { &consts.str_readln,      "readln" },
@@ -3128,6 +3138,7 @@ struct init_str init_str_tbl[] = {
   { &consts.str_system,      "#System" },
   { &consts.str_tostring,    "tostring" },
   { &consts.str_toupper,     "toupper" },
+  { &consts.str_tryc_catchc_finallyc, "&try:catch:finally:" },
   { &consts.str_true,        "#true" },
   { &consts.str_whilec,      "&while:" },
   { &consts.str__write,      "_write" },
@@ -3254,6 +3265,9 @@ struct init_method init_method_tbl[] = {
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_read,   cm_file_read },
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_readln, cm_file_readln },
   { &consts.cl_file, CLASSVAL_OFS(inst_methods), &consts.str_load,   cm_file_load },
+
+  { &consts.cl_except, CLASSVAL_OFS(cl_methods), &consts.str_tryc_catchc_finallyc, cm_except_try },
+  { &consts.cl_except, CLASSVAL_OFS(cl_methods), &consts.str_raisec,               cm_except_raise },
 
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc,      cm_env_at },
   { &consts.cl_env, CLASSVAL_OFS(cl_methods), &consts.str_atc_defc, cm_env_atdef },
