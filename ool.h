@@ -261,6 +261,7 @@ struct {
   inst_t cl_env;
   inst_t cl_system;
   
+  inst_t str___ool_exception_cannot_instantiate;
   inst_t str_addc;
   inst_t str_aandc;
   inst_t str_andc;
@@ -728,7 +729,7 @@ frame_except_push(inst_t *arg)
   struct frame_except *fr = (struct frame_except *) frame_push(sizeof(*fr), FRAME_TYPE_EXCEPT);
 
   fr->prev = oolvm->exceptfp;
-  fr->arg  = arg;
+  fr->arg     = arg;
   oolvm->exceptfp = fr;
 }
 
@@ -757,6 +758,10 @@ void __attribute__((noreturn)) error(char *fmt, ...);
 void __attribute__((noreturn)) error_argc(void);
 void __attribute__((noreturn)) error_bad_arg(inst_t arg);
 void __attribute__((noreturn)) fatal(char *msg);
+
+
+void __attribute__((noreturn)) except_raise(inst_t except, inst_t arg);
+
 
 struct init_cl {
   inst_t *cl, *name, *parent;

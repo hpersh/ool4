@@ -417,7 +417,7 @@ void
 inst_alloc(inst_t *dst, inst_t cl)
 {
   unsigned size = CLASSVAL(cl)->inst_size;
-  if (size <= sizeof(struct inst))  error("Cannot instantiate\n");
+  if (size <= sizeof(struct inst))  except_raise(consts.str___ool_exception_cannot_instantiate, cl);
 
   inst_t inst = (inst_t) mem_alloc(size, true);
 
@@ -639,14 +639,12 @@ error_begin(void)
   abort();
 }
 
-void __attribute__((noreturn)) except_raise(inst_t arg);
-
 static inline void __attribute__((noreturn)) 
 error_end(void)
 {
   --err_lvl;
 
-  except_raise(0);
+  except_raise(0, 0);
 }
 
 void __attribute__((noreturn)) 
@@ -2834,11 +2832,21 @@ cm_metaclass_new(void)
 }
 
 void __attribute__((noreturn)) 
-except_raise(inst_t arg)
+__except_raise(inst_t arg)
 {
   inst_assign(oolvm->exceptfp->arg, arg);
 
   frame_jmp(oolvm->exceptfp->base, 1);
+}
+
+void __attribute__((noreturn)) 
+except_raise(inst_t except, inst_t arg)
+{
+  FRAME_WORK_BEGIN(3) {
+    inst_assign(&WORK(1), consts.cl_except);
+    pair_new(&WORK(2), except, arg);
+    inst_method_call(&WORK(0), consts.str_raisec, 2, &WORK(1));
+  } FRAME_WORK_END;
 }
 
 void
@@ -2847,7 +2855,7 @@ except_try(inst_t *dst, inst_t try, inst_t catch, inst_t finally)
   struct frame_except *e = 0;
   bool caughtf = false;
 
-  FRAME_WORK_BEGIN(2) {
+  FRAME_WORK_BEGIN(3) {
     FRAME_EXCEPT_BEGIN(&WORK(1)) {
       if (setjmp(oolvm->exceptfp->base->jmp_buf) == 0) {
 	e = oolvm->exceptfp;
@@ -2877,7 +2885,7 @@ except_try(inst_t *dst, inst_t try, inst_t catch, inst_t finally)
 void
 cm_except_raise(void)
 {
-  except_raise(MC_ARG(1));
+  __except_raise(MC_ARG(1));
 }
 
 void
@@ -3077,6 +3085,7 @@ struct init_cl init_cl_tbl[] = {
 };
 
 struct init_str init_str_tbl[] = {
+  { &consts.str___ool_exception_cannot_instantiate, "__ool_exception_cannot_instantiate" },
   { &consts.str_addc,        "add:" },
   { &consts.str_aandc,       "&and:" },
   { &consts.str_andc,        "and:" },
