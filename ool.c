@@ -340,6 +340,9 @@ frames_unwind(struct frame *fr)
 {
   while (oolvm->fp != fr) {
     switch (oolvm->fp->type) {
+    case FRAME_TYPE_SCRATCH:
+      frame_scratch_pop();
+      break;
     case FRAME_TYPE_WORK:
       frame_work_pop();
       break;

@@ -64,6 +64,14 @@ list_next(struct list *item)
 struct list *list_insert(struct list *item, struct list *before);
 void        list_erase(struct list *item);
 
+enum { CLIST_DATA_SIZE = 512 };
+
+struct clist {
+  struct clist *next;
+  unsigned     size;
+  char         data[CLIST_DATA_SIZE];
+};
+
 enum {
   MIN_BLK_SIZE_LOG2  = 4,
   MIN_BLK_SIZE       = 1 << MIN_BLK_SIZE_LOG2
@@ -132,6 +140,7 @@ struct inst_str {
 void str_alloc(inst_t *dst, unsigned size);
 void str_newc(inst_t *dst, unsigned argc, ...);
 void str_newv(inst_t *dst, unsigned n, inst_t *data);
+void str_newcl(inst_t *dst, unsigned size, struct clist *cl);
 
 struct inst_dptr {
   struct inst base[1];
@@ -436,6 +445,12 @@ struct frame {
   unsigned     type;
 };
 
+struct frame_scratch {
+  struct frame  base[1];
+  unsigned      size;
+  unsigned char data[0];
+};
+
 struct frame_work {
   struct frame      base[1];
   struct frame_work *prev;
@@ -517,15 +532,19 @@ frame_pop(unsigned size)
 static inline unsigned char *
 frame_scratch_push(unsigned size)
 {
-  return ((unsigned char *) frame_push(sizeof(struct frame) + size, FRAME_TYPE_SCRATCH) + sizeof(struct frame));
+  size = ((size - 1) & ~3) + 4;
+
+  struct frame_scratch *fr = (struct frame_scratch *) frame_push(sizeof(struct frame_scratch) + size, FRAME_TYPE_SCRATCH);
+
+  return ((unsigned char *)(fr + 1));
 }
 
 static inline void
-frame_scratch_pop(unsigned size)
+frame_scratch_pop(void)
 {
   assert(oolvm->fp->type == FRAME_TYPE_SCRATCH);
 
-  frame_pop(sizeof(struct frame) + size);
+  frame_pop(sizeof(struct frame) + ((struct frame_scratch *) oolvm->fp)->size);
 }
 
 static inline void
@@ -697,9 +716,6 @@ frame_input_pop(void)
 #define FRAME_INPUT_END \
     frame_input_pop();	\
   }
-
-
-
 
 static inline void
 frame_except_push(inst_t *arg)
