@@ -755,14 +755,8 @@ frame_except_pop(void)
     frame_except_pop();		  \
   }
 
-void __attribute__((noreturn)) error(char *fmt, ...);
-void __attribute__((noreturn)) error_argc(void);
-void __attribute__((noreturn)) error_bad_arg(inst_t arg);
-void __attribute__((noreturn)) fatal(char *msg);
-
-
 void __attribute__((noreturn)) except_raise(inst_t except, inst_t arg);
-
+void __attribute__((noreturn)) fatal(char *msg);
 
 struct init_cl {
   inst_t *cl, *name, *parent;

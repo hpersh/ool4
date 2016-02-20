@@ -82,7 +82,7 @@ struct {
 
 #endif
 
-unsigned
+unsigned __attribute__((const))
 round_up_to_power_of_2(unsigned n)
 {
   unsigned result = n, k;
@@ -94,13 +94,13 @@ round_up_to_power_of_2(unsigned n)
   }
 }
 
-static inline unsigned
+static inline unsigned __attribute__((const))
 page_size_align(unsigned size)
 {
   return (((size - 1) >> MEM_PAGE_SIZE_LOG2) + 1);
 }
 
-struct mem_blk_info *
+struct mem_blk_info * __attribute__((pure))
 blk_size_align(unsigned size)
 {
   if (size < mem_blk_info[0].size)  return (&mem_blk_info[0]);
@@ -125,7 +125,7 @@ blk_size_align(unsigned size)
   return (bi);
 }
 
-static inline struct mem_blk_page *
+static inline struct mem_blk_page * __attribute__((const))
 blk_to_page(void *p)
 {
   return ((struct mem_blk_page *) (PTR_TO_UINT(p) & ~(MEM_PAGE_SIZE - 1)));
@@ -143,7 +143,7 @@ enum { MEM_PAGES_ALLOCED_COLLECT_LIMIT = 100 };
 
 void collect(void);
 
-void *
+void * __attribute__((malloc))
 mem_pages_alloc(unsigned npages)
 {
   bool collectf = false;
